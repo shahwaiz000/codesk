@@ -6,6 +6,9 @@ import { Icon, IconName, Mark } from "./icons";
 type NavItem = { to: string; label: string; icon: IconName };
 /* Pages are added here as each stage is finished, so the menu never points at an empty page. */
 export const NAV: { title: string; items: NavItem[] }[] = [
+  { title: "Daily desk", items: [
+    { to: "/collections", label: "Collections", icon: "cash" },
+  ] },
   { title: "Records", items: [
     { to: "/drivers", label: "Drivers", icon: "drivers" },
   ] },

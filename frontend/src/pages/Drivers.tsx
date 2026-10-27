@@ -125,7 +125,7 @@ export default function Drivers() {
                 ? <Empty title="No drivers yet" hint="Add your drivers with the same IDs your delivery system uses, so imports match them automatically."><button onClick={() => setEditing("new")} className="btn-primary">Add driver</button></Empty>
                 : <Empty title="No driver matches" hint="Try another search, choose all hubs, or show inactive drivers." />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[760px] text-sm">
                   <thead>
                     <tr className="border-b border-paper-line text-left text-xs text-ink-faint">

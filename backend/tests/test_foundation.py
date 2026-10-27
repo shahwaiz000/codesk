@@ -36,16 +36,17 @@ def test_demo_data_has_exactly_the_planted_mistakes(client):
     with SessionLocal() as db:
         seeded = db.query(Driver).filter(Driver.code.in_([c for c, _, _ in DRIVERS])).all()
         assert len(seeded) == 12 and sum(not d.active for d in seeded) == 1
-        assert db.query(Collection).count() == 11 * DAYS
+        demo = db.query(Collection).filter(Collection.business_date.in_(days), Collection.created_by == "demo").all()
+        assert len(demo) == 11 * DAYS
         diffs = sorted((days.index(c.business_date), c.driver.code, (c.cash_received - c.expected_cash) // 100)
-                       for c in db.query(Collection) if c.cash_received != c.expected_cash)
+                       for c in demo if c.cash_received != c.expected_cash)
         assert diffs == sorted(PLANTED["cash_differences"])
         open_adv = db.query(Expense).filter(Expense.category == "advance", Expense.settled_on.is_(None)).all()
         assert sorted(e.driver.code for e in open_adv) == ["D-108", "D-111"]
 
         def owed(pos):
             day = days[pos]
-            cash = sum(c.cash_received for c in db.query(Collection).filter_by(business_date=day))
+            cash = sum(c.cash_received for c in db.query(Collection).filter_by(business_date=day, created_by="demo"))
             spent = sum(e.amount for e in db.query(Expense).filter_by(business_date=day))
             paid = sum(d.amount for d in db.query(Deposit).filter_by(business_date=day))
             return cash - spent - paid
@@ -98,4 +99,4 @@ def test_audit_entries_cannot_be_changed(client):
 def test_meta_reports_the_data_range(client):
     m = client.get("/api/meta").json()
     assert m["latest_business_date"] == END.isoformat() and m["currency"] == "SAR"
-    assert m["first_business_date"] == business_days(END)[-1].isoformat()
+    assert m["first_business_date"] <= business_days(END)[-1].isoformat()  # other tests add older days

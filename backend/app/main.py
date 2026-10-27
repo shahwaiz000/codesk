@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from . import audit, auth
+from . import audit, auth, collections
+from .deps import current_user
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
 from .models import AuditEvent, Collection, Deposit, Driver, Expense, User, iso
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CODesk API", version="0.1.0", lifespan=lifespan)
+app.include_router(collections.router)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(","), allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -73,10 +75,6 @@ async def validation_error(_: Request, exc: RequestValidationError):
         field = ".".join(str(p) for p in e["loc"] if p != "body")
         return f"{field}: {e['msg']}" if field else e["msg"]
     return _err(422, "validation_error", "; ".join(one(e) for e in exc.errors()))
-
-
-def current_user(request: Request) -> str:
-    return getattr(request.state, "username", "") or "owner"
 
 
 @app.get("/api/health")
