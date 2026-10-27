@@ -63,3 +63,25 @@ export interface DepositLedger {
   rows: DepositDay[]; banks: string[]; today: string;
   totals: { cash_on_hand: number; overdue: number; overdue_days: number; short: number; short_days: number; due_today: number; not_due: number; deposited: number; late_days: number };
 }
+
+export interface DashFigures {
+  cash_received: number; expected_cash: number; cash_short: number; cash_over: number; short_count: number; over_count: number;
+  pos_terminal: number; pos_system: number; pos_difference: number; pos_open: number; pos_differences: number;
+  total_collected: number; orders: number; drivers: number; expenses: number; advances: number;
+  paid_out: number; returned: number; to_deposit: number; deposited: number; pending: number;
+  deposit_status: DepositStatus; deposit_status_text: string; due_on: string | null;
+}
+export interface DashIssue { kind: "cash_short" | "cash_over" | "terminal_short" | "terminal_over"; amount: number; page: string; explained?: boolean }
+export interface DashAlert { kind: string; date: string; amount: number; page: string; text: string }
+export interface Dashboard {
+  date: string; previous_date: string | null; figures: DashFigures; previous: DashFigures | null; active_drivers: number;
+  cash_on_hand: number; attention: { driver_code: string; driver_name: string; issues: DashIssue[] }[];
+  alerts: DashAlert[]; alert_count: number; alert_kinds: Record<string, number>;
+  trend: { date: string; cash: number; pos: number; deposit_status: DepositStatus }[];
+}
+export interface ReportPreview {
+  start: string; end: string; days: number; handovers: number; cash_differences: number; pos_differences: number;
+  expenses: number; slips: number; open_advances: number; pending_days: number;
+  totals: { expected_cash: number; cash_received: number; cash_difference: number; pos_system: number; pos_terminal: number;
+    pos_difference: number; paid_out: number; returned: number; to_deposit: number; deposited: number; pending: number };
+}

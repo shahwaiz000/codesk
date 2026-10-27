@@ -37,7 +37,7 @@ export default function DayPicker({ refreshKey = 0 }: { refreshKey?: number }) {
           className="px-2.5 text-ink-soft hover:bg-paper-deep hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"><Icon name="chevronRight" className="h-4 w-4" /></button>
       </div>
 
-      <ol className="flex gap-1 overflow-x-auto" aria-label="Last seven working days">
+      <ol className="flex min-w-0 max-w-full gap-1 overflow-x-auto" aria-label="Last seven working days">
         {strip.map((d) => {
           const s = byDate.get(d);
           const selected = d === day;

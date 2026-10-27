@@ -6,10 +6,12 @@ import { AuthGate } from "./auth";
 import { BusinessDayProvider } from "./businessDay";
 import Layout from "./components/Layout";
 import Collections from "./pages/Collections";
+import Dashboard from "./pages/Dashboard";
 import Deposits from "./pages/Deposits";
 import Drivers from "./pages/Drivers";
 import Expenses from "./pages/Expenses";
 import PosCheck from "./pages/PosCheck";
+import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -19,11 +21,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <BusinessDayProvider>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<Navigate to="/collections" replace />} />
+            <Route index element={<Dashboard />} />
             <Route path="collections" element={<Collections />} />
             <Route path="pos" element={<PosCheck />} />
             <Route path="expenses" element={<Expenses />} />
             <Route path="deposits" element={<Deposits />} />
+            <Route path="reports" element={<Reports />} />
             <Route path="drivers" element={<Drivers />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />

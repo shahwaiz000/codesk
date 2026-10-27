@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Sent when the server says the login has ended, so the app can show the login page. */
 export const AUTH_LOST = "codesk-auth-lost";
@@ -23,11 +23,14 @@ export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const latest = useRef(0);
   const load = useCallback(() => {
     if (!path) return;
+    const ticket = ++latest.current; // only the newest request may update the screen
     setLoading(true);
-    api<T>(path).then((d) => { setData(d); setError(null); })
-      .catch((e: Error) => setError(e.message)).finally(() => setLoading(false));
+    api<T>(path).then((d) => { if (ticket === latest.current) { setData(d); setError(null); } })
+      .catch((e: Error) => { if (ticket === latest.current) setError(e.message); })
+      .finally(() => { if (ticket === latest.current) setLoading(false); });
   }, [path]);
   useEffect(load, [load]);
   return { data, error, loading, reload: load };

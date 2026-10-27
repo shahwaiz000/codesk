@@ -4,7 +4,7 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 
 **All data in this project is fictional.** No real company, driver or bank data is used anywhere.
 
-> Status: stage 4 of 6, work in progress. This file says exactly what works.
+> Status: stage 5 of 6, work in progress. This file says exactly what works.
 
 ## The daily cycle it follows
 
@@ -18,6 +18,8 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 ## What works today
 
 - **Login.** One owner account, scrypt password hashing, HttpOnly session cookie, lockout after five wrong passwords, and requests from unknown websites are refused.
+- **Dashboard.** The chosen business day at a glance: total collected with the change against the previous day, the cash and POS split, cash and POS differences, and the day's money from driver to bank written as a ledger line (cash received, minus paid out, equals cash to deposit, minus deposited, equals pending). A 30-day chart of cash and POS per day (click a bar to open that day), the drivers with a difference on the day, and a "needs attention" list across all days: overdue or short deposits, unexplained POS differences, and advances open for more than 14 days, each linking to its page.
+- **Reports.** The daily finance report and a period report (up to 93 days), as an Excel workbook (Summary, By day, Collections, POS check, Expenses and Deposits sheets, with real SUM formulas and formula-like text made harmless) or a printable one-page PDF with open items and Prepared / Checked / Approved sign-off lines. A preview shows the totals and what the report will list before you download it.
 - **Collections.** Pick a business day (Fridays are skipped) and see every driver's handover: expected cash from the system, cash counted at the desk, the difference, POS card total and the day total. Short drivers are marked in red and extra cash in brass, and drivers who have not handed over yet are listed with a one-click record button. Handovers can be recorded, corrected or deleted, and every change is logged with the old and new amounts.
 - **Import.** Upload the day's driver list as CSV or Excel. The file is checked first and nothing is saved until you confirm: unknown or inactive drivers, unreadable amounts, wrong order counts and the same driver twice are shown row by row. Rows already saved with the same values are skipped, and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID" and so on), amounts like "SAR 1,234.50" are understood, and dates are read day-first (26/10/2026). A template can be downloaded from the import window.
 - **POS check.** For each driver and day, the orders the system shows as closed by POS against the total on his POS terminal, with the exact difference (terminal short or over). Click a driver to see his POS orders; an order whose amount equals the difference is highlighted, because it is usually the one closed as POS but paid in cash. Each difference can be marked explained (a reason is required) or needing follow-up, or reopened. If the numbers change after a review, the review shows as out of date and the difference is open again.
@@ -33,7 +35,6 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 
 | Stage | What |
 |---|---|
-| 5 | Dashboard and the daily finance report (Excel and PDF) |
 | 6 | Polish, screenshots and interview notes |
 
 ## The planted mistakes in the demo data
@@ -55,7 +56,7 @@ The tests check that the app finds exactly these.
 
 ## Technology (all free)
 
-React, TypeScript, Vite, Tailwind CSS, Python, FastAPI, SQLAlchemy, SQLite, pandas, pytest, Vitest.
+React, TypeScript, Vite, Tailwind CSS, Recharts, Python, FastAPI, SQLAlchemy, SQLite, pandas, openpyxl, ReportLab, pytest, Vitest.
 
 ## Run it on Windows 11
 

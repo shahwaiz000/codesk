@@ -7,12 +7,14 @@ type NavItem = { to: string; label: string; icon: IconName };
 /* Pages are added here as each stage is finished, so the menu never points at an empty page. */
 export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "Daily desk", items: [
+    { to: "/", label: "Dashboard", icon: "dashboard" },
     { to: "/collections", label: "Collections", icon: "cash" },
     { to: "/pos", label: "POS check", icon: "card" },
     { to: "/expenses", label: "Expenses & advances", icon: "receipt" },
     { to: "/deposits", label: "Bank deposits", icon: "bank" },
   ] },
   { title: "Records", items: [
+    { to: "/reports", label: "Reports", icon: "report" },
     { to: "/drivers", label: "Drivers", icon: "drivers" },
   ] },
 ];
@@ -34,7 +36,7 @@ function Sidebar() {
             <p className="mb-2 px-3 text-xs text-ledger-300/80">{g.title}</p>
             <div className="space-y-0.5">
               {g.items.map((l) => (
-                <NavLink key={l.to} to={l.to}
+                <NavLink key={l.to} to={l.to} end={l.to === "/"}
                   className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isActive ? "bg-white/10 text-white" : "text-ledger-300 hover:bg-white/[0.05] hover:text-white"}`}>
                   {({ isActive }) => (<>
                     <Icon name={l.icon} className={`h-[18px] w-[18px] ${isActive ? "text-brass-glow" : ""}`} />
