@@ -1,62 +1,82 @@
 # CODesk
 
-A finance desk for a logistics company's daily cash-on-delivery (COD) work: driver handovers in cash and POS, POS checks against closed orders, driver expenses and advances, next-day bank deposits, and the daily finance report.
+A finance desk for the daily cash-on-delivery (COD) work of a logistics company: driver handovers in cash and POS, POS checks against closed orders, driver expenses and advances, next-day bank deposits, and the daily finance report.
 
-**All data in this project is fictional.** No real company, driver or bank data is used anywhere.
+I built it around the work I do every day as a finance executive at a delivery company. Every screen matches a step of that day, and every check is one I used to do by hand in Excel.
 
-> Status: stage 5 of 6, work in progress. This file says exactly what works.
+**All data in this project is fictional.** No real company, driver, customer or bank data is used anywhere.
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ## The daily cycle it follows
 
-1. Drivers finish their routes and hand over cash. Card payments were already taken on their POS machines.
+1. Drivers finish their routes and come back to the desk. Card payments were already taken on their POS machines.
 2. The desk counts each driver's cash and checks it against the cash the delivery system says he collected.
-3. POS payments are checked order by order against the orders closed in the system.
+3. The system's POS-closed orders for each driver are checked against the total on his POS terminal.
 4. Travel expenses and advances are paid out of the day's cash.
-5. The next working day, the rest of the cash goes to the bank: **cash to deposit = cash received - expenses paid**.
-6. A daily finance report is produced.
+5. On the next working day the rest goes to the bank:
+   **cash to deposit = cash received from drivers − expenses and advances paid out + advances returned in cash**
+6. A daily finance report is printed and signed.
 
-## What works today
+## What it does
 
-- **Login.** One owner account, scrypt password hashing, HttpOnly session cookie, lockout after five wrong passwords, and requests from unknown websites are refused.
-- **Dashboard.** The chosen business day at a glance: total collected with the change against the previous day, the cash and POS split, cash and POS differences, and the day's money from driver to bank written as a ledger line (cash received, minus paid out, equals cash to deposit, minus deposited, equals pending). A 30-day chart of cash and POS per day (click a bar to open that day), the drivers with a difference on the day, and a "needs attention" list across all days: overdue or short deposits, unexplained POS differences, and advances open for more than 14 days, each linking to its page.
-- **Reports.** The daily finance report and a period report (up to 93 days), as an Excel workbook (Summary, By day, Collections, POS check, Expenses and Deposits sheets, with real SUM formulas and formula-like text made harmless) or a printable one-page PDF with open items and Prepared / Checked / Approved sign-off lines. A preview shows the totals and what the report will list before you download it.
-- **Collections.** Pick a business day (Fridays are skipped) and see every driver's handover: expected cash from the system, cash counted at the desk, the difference, POS card total and the day total. Short drivers are marked in red and extra cash in brass, and drivers who have not handed over yet are listed with a one-click record button. Handovers can be recorded, corrected or deleted, and every change is logged with the old and new amounts.
-- **Import.** Upload the day's driver list as CSV or Excel. The file is checked first and nothing is saved until you confirm: unknown or inactive drivers, unreadable amounts, wrong order counts and the same driver twice are shown row by row. Rows already saved with the same values are skipped, and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID" and so on), amounts like "SAR 1,234.50" are understood, and dates are read day-first (26/10/2026). A template can be downloaded from the import window.
-- **POS check.** For each driver and day, the orders the system shows as closed by POS against the total on his POS terminal, with the exact difference (terminal short or over). Click a driver to see his POS orders; an order whose amount equals the difference is highlighted, because it is usually the one closed as POS but paid in cash. Each difference can be marked explained (a reason is required) or needing follow-up, or reopened. If the numbers change after a review, the review shows as out of date and the difference is open again.
-- **POS imports.** The system's POS-closed orders (order number, driver ID, amount; cash rows are skipped when the file has a payment method column) and the terminal sheet (terminal ID and the day's total, matched to drivers by terminal ID). Both are checked before anything is saved.
-- **Expenses and advances.** Pay out fuel, tolls, parking, travel, maintenance or other expenses, or an advance, to a driver from the day's cash, with a receipt number and a note. Open advances are listed with how many days they have been open. An advance is recovered either by salary deduction (nothing comes back to the desk) or as cash returned at the desk, which is added to that day's cash to deposit. Recovered advances can be reopened, and cannot be changed or deleted until they are.
-- **Bank deposits.** A day-by-day ledger: cash received, paid out, cash to deposit, deposited and pending. Each day's cash is due at the bank on the next working day (Fridays skipped), and every day shows one status: cash on hand, due today, overdue, deposit short, deposited or deposited too much, plus how many days late a deposit was. A day can be deposited with several slips; a slip number can only be used once, a slip cannot be more than what is still pending, and a deposit cannot be dated before its business day.
-- **Drivers.** Add, edit, deactivate or reactivate drivers, each with his POS terminal ID (one terminal per active driver). Each handover remembers the terminal used that day, so moving a machine to another driver does not change old days. Each driver shows the last handover day, total cash shortages and advances not yet recovered. A driver with finance records cannot be deleted, only marked inactive.
-- **Activity log.** Every change is saved with who made it and when. Entries cannot be edited or deleted (blocked in the database layer too).
-- **Exact money.** Amounts are stored as whole halalas, so totals never drift the way decimal numbers in floating point do.
-- **Fictional demo data.** 12 drivers and 30 working days (Fridays off) of handovers, expenses, advances and deposits, with mistakes planted on purpose so every check has something to find.
+**Dashboard.** The chosen business day at a glance: total collected against the previous day, the cash and POS split, cash and POS differences, and the day's money from driver to bank written as one ledger line (received − paid out = to deposit − deposited = pending). A 30-day chart of cash and POS per day (click a bar to open that day), the drivers with a difference that day, and a *needs attention* list across all days: overdue or short deposits, unexplained POS differences and advances open for more than 14 days.
 
-## Coming next
+**Collections.** Every driver's handover for the day: expected cash from the system, cash counted at the desk, the exact difference, POS terminal total and the day total. Short drivers show in red, extra cash in brass, and drivers who have not handed over yet are listed with a one-click button. The form shows the difference while you type.
 
-| Stage | What |
-|---|---|
-| 6 | Polish, screenshots and interview notes |
+![Collections](docs/screenshots/collections.png)
 
-## The planted mistakes in the demo data
+**POS check.** For each driver, the orders the system shows as closed by POS against his terminal's total for the day. Click a driver to see his POS orders. If one order is exactly the size of the difference it is highlighted, because that is usually the order closed as POS but paid in cash. Each difference is marked *explained* (a reason is required) or *needs follow-up*. If the numbers change after a review, the review shows as out of date and the difference is open again.
+
+![POS check](docs/screenshots/pos-check.png)
+
+**Expenses and advances.** Fuel, tolls, parking, travel, maintenance or other expenses, and advances, paid to a driver from the day's cash with a receipt number. Open advances show how many days they have been open. An advance is recovered either from salary (nothing comes back to the desk) or as cash returned at the desk, which is added to that day's deposit.
+
+![Expenses and advances](docs/screenshots/expenses.png)
+
+**Bank deposits.** A day-by-day ledger: cash received, paid out, cash to deposit, deposited and pending, with one status per day: cash on hand, due today, overdue, deposit short, deposited (and how many days late). A day can be deposited with several slips. A slip number can be used only once, a slip cannot be more than what is still pending, and a deposit cannot be dated before its business day.
+
+![Bank deposits](docs/screenshots/deposits.png)
+
+**Reports.** The daily finance report, or a period report of up to 93 days, as an **Excel workbook** (Summary, By day, Collections, POS check, Expenses and Deposits sheets, with real SUM formulas) or a **one-page PDF** with open items and *Prepared / Checked / Approved* signature lines. A preview shows the totals before you download.
+
+![Reports](docs/screenshots/reports.png)
+
+**Imports with a check first.** Handovers, the system's POS orders and the terminal sheet can be imported from CSV or Excel. Nothing is saved until you have seen the check: unknown or inactive drivers, unreadable amounts, a driver or order twice, a terminal nobody has. Rows already saved are skipped and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID", "TID"...), amounts like "SAR 1,234.50" or "(500.00)" are understood, dates are read day-first (26/10/2026), and cash orders in a POS export are skipped.
+
+**Drivers.** Driver IDs, hubs and POS terminal IDs (one terminal per active driver). Each handover keeps the terminal used that day, so moving a machine to another driver does not change old days. A driver with records cannot be deleted, only made inactive.
+
+**Activity log and login.** Every change is saved with who made it, when, and the old and new amounts. Log entries cannot be edited or deleted, which is also blocked in the database layer. One owner account, scrypt password hashing, an HttpOnly session cookie, lockout after five wrong passwords, and changes from unknown websites are refused.
+
+## Things done carefully
+
+- **Money is stored as whole halalas** (1 SAR = 100 halalas) in integer columns. Decimal numbers stored as floats drift by fractions of a halala when thousands of them are added; integers never do, so every total adds up exactly.
+- **Fridays are the weekly day off.** Thursday's cash is due at the bank on Saturday, and the date controls skip Fridays.
+- **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
+- **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
+- **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
+- **Tests.** 71 backend tests (pytest) and 11 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+
+## Demo data
+
+Started on an empty database, the backend adds 12 fictional drivers and 30 working days of handovers, POS orders, expenses, advances and deposits, with these mistakes planted:
 
 | Mistake | Where |
 |---|---|
 | Cash short | 5 handovers: 20, 50, 75, 120 and 300 SAR |
 | Cash over | 1 handover: 30 SAR |
-| Advances not recovered | 2 drivers: 300 and 800 SAR |
-| Deposit short | 1 day: 500 SAR less than the cash to deposit |
-| Late deposit | 1 day reached the bank 3 working days later |
-| Not deposited yet | the latest day (due today) |
 | POS terminal short | 3 driver-days: 60, 150 and 320 SAR |
-| POS terminal over | 1 driver-day: 85.50 SAR (a card swiped twice) |
+| POS terminal over | 1 driver-day: 85.50 SAR |
+| Advances not recovered | 2 drivers: 300 and 800 SAR |
+| Deposit short | 1 day: 500 SAR |
+| Late deposit | 1 day, deposited 3 working days after it was due |
+| Not deposited yet | the latest day |
 
-The tests check that the app finds exactly these.
+The `samples` folder has a fictional day to import yourself, in this order:
 
-`samples/sample_handovers.csv` is a fictional day you can import yourself. It has 9 good rows (one driver 50 short, one 20 over) and 2 rows with planted problems: an order count that is not a number and a driver ID that does not exist.
-
-## Technology (all free)
-
-React, TypeScript, Vite, Tailwind CSS, Recharts, Python, FastAPI, SQLAlchemy, SQLite, pandas, openpyxl, ReportLab, pytest, Vitest.
+1. `sample_handovers.csv` on **Collections**: 9 good rows (one driver 50 short, one 20 over) and 2 planted problems (an order count that is not a number, an unknown driver ID).
+2. `sample_pos_orders.csv` on **POS check** (*Import system orders*): 39 POS orders and 1 cash order that is skipped. One order of D-105 was closed as POS but not paid by card.
+3. `sample_terminal_sheet.csv` on **POS check** (*Import terminal sheet*): D-107's terminal shows 50 more than his orders (a card swiped twice), and one terminal belongs to nobody.
 
 ## Run it on Windows 11
 
@@ -80,21 +100,34 @@ npm test
 npm run dev
 ```
 
-Open http://localhost:5173 and create your owner account. The demo data is added the first time the backend starts with an empty database. To start again from fresh demo data, stop the backend and delete `backend\codesk.db`.
+Open http://localhost:5173 and create your owner account. To start again from fresh demo data, stop the backend and delete `backend\codesk.db`. The API documentation is at http://127.0.0.1:8000/docs.
 
-When a new version adds columns to the database, they are added automatically at start-up.
+## Technology (all free)
+
+React, TypeScript, Vite, Tailwind CSS, Recharts, Python, FastAPI, SQLAlchemy, SQLite, pandas, openpyxl, ReportLab, pytest, Vitest.
 
 ## How it is built
 
 ```
 backend/app/
-  main.py      API routes, login check, consistent error format
-  models.py    database tables (money in halalas)
-  money.py     reading amounts like "SAR 1,234.50" or "(500.00)" exactly
-  seed.py      the fictional demo data and its planted mistakes
-  auth.py      passwords and sessions
-  audit.py     the activity log
+  main.py         app start-up, login check, drivers, activity log
+  collections.py  driver handovers and their import
+  pos.py          POS check: system POS orders against terminal totals, reviews, imports
+  expenses.py     expenses and advances, recovery by salary or cash
+  deposits.py     the cash-to-deposit ledger and deposit slips
+  dashboard.py    the day at a glance and the needs-attention list
+  reports.py      Excel and PDF reports
+  files.py        reading CSV and Excel uploads safely
+  money.py        reading amounts exactly, into halalas
+  models.py       database tables
+  seed.py         the fictional demo data and its planted mistakes
 frontend/src/
-  pages/       one file per screen
-  components/  layout, icons and shared pieces
+  pages/          one file per screen
+  components/     layout, date picker, import window, dialogs
+docs/
+  INTERVIEW_GUIDE.md  how to present the project
 ```
+
+## Not built yet
+
+Several users with roles (one owner account today), a branch or hub filter on the dashboard, partial recovery of an advance, a direct connection to a delivery system or bank (data comes in as files), and an Arabic interface.
