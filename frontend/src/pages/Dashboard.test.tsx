@@ -50,3 +50,12 @@ test("reports offer both downloads for the chosen day", async () => {
   expect(links[0].getAttribute("href")).toMatch(/\/api\/reports\/day\?date=\d{4}-\d{2}-\d{2}&format=xlsx/);
   expect(screen.getAllByRole("link", { name: /Printable PDF/ })[1].getAttribute("href")).toMatch(/\/api\/reports\/range\?start=.*&format=pdf/);
 });
+
+test("the van parks where the day's money really is", async () => {
+  const { routeState } = await import("../components/MoneyRoute");
+  expect(routeState({ ...F, drivers: 0 }).at).toBe(0);
+  expect(routeState({ ...F, deposit_status: "due_today", deposited: 0 }).at).toBe(2);
+  expect(routeState(F)).toMatchObject({ tone: "short" }); // a short deposit is stuck before the bank
+  expect(routeState({ ...F, deposit_status: "deposited", pending: 0 })).toMatchObject({ at: 3, tone: "leaf" });
+  expect(routeState({ ...F, deposit_status: "overdue", deposited: 0 })).toMatchObject({ at: 2, tone: "short" });
+});

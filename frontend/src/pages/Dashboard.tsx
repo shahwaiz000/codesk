@@ -1,20 +1,17 @@
-import { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
+import MoneyRoute from "../components/MoneyRoute";
 import { Icon } from "../components/icons";
 import { Badge, ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, useApi } from "../lib";
-import type { Dashboard as Dash, DashFigures, DepositStatus } from "../types";
+import type { Dashboard as Dash } from "../types";
 
 /* Chart colors, checked for color-blind separation and contrast on white. */
 const CASH = "#1d7a55";
 const POS = "#5a7fd1";
 
-const DEPOSIT_TONE: Record<DepositStatus, "leaf" | "brass" | "short" | "muted"> = {
-  deposited: "leaf", not_due: "muted", due_today: "brass", overdue: "short", short: "short", over: "brass", nothing: "muted",
-};
 
 function Change({ now, before, prevDate }: { now: number; before: number | undefined; prevDate: string | null }) {
   if (before == null || !prevDate) return null;
@@ -25,39 +22,6 @@ function Change({ now, before, prevDate }: { now: number; before: number | undef
     <span className="text-xs text-ink-faint">
       <span className={`num font-medium ${up ? "text-leaf-dark" : "text-ink-soft"}`}>{up ? "+" : ""}{pct.toFixed(1)}%</span> vs {fmtDay(prevDate)}
     </span>
-  );
-}
-
-/** The day's money from driver to bank, written as the ledger line the cashier works through. */
-function CashFlow({ f }: { f: DashFigures }) {
-  const step = (label: string, value: number, sign: string | null, foot: ReactNode, strong = false, tone?: "short" | "brass" | "leaf") => (
-    <div className="relative flex min-w-[9.5rem] flex-1 items-start gap-3 px-5 py-5">
-      {sign && <span aria-hidden="true" className="absolute -left-2.5 top-[2.1rem] grid h-5 w-5 place-items-center rounded-full bg-paper text-sm font-semibold text-ink-faint ring-4 ring-white">{sign}</span>}
-      <div>
-        <p className="text-sm text-ink-soft">{label}</p>
-        <p className={`mt-1 leading-tight ${strong ? "text-[26px] font-semibold" : "text-xl font-semibold"}`}><Money value={value} tone={tone} /></p>
-        <p className="mt-1 text-xs text-ink-faint">{foot}</p>
-      </div>
-    </div>
-  );
-  return (
-    <section aria-label="Cash from driver to bank" className="mb-6 overflow-hidden rounded-panel bg-white shadow-panel">
-      <div className="flex items-center justify-between gap-3 border-b border-paper-line px-5 py-3">
-        <h2 className="text-[15px] font-semibold">Cash from driver to bank</h2>
-        <span className="flex items-center gap-2 text-sm text-ink-soft">
-          {f.due_on && <>Bank deposit due {fmtDay(f.due_on)}</>}
-          <Badge tone={DEPOSIT_TONE[f.deposit_status]}>{f.deposit_status_text}</Badge>
-        </span>
-      </div>
-      <div className="flex flex-wrap divide-x divide-paper-line">
-        {step("Cash received", f.cash_received, null, <>from <span className="num">{f.drivers}</span> drivers</>)}
-        {step("Paid out", f.paid_out - f.returned, "−", f.advances ? <>incl. advances <span className="num">{fmtMoney(f.advances)}</span></> : "expenses")}
-        {step("To deposit", f.to_deposit, "=", "cash received minus paid out", true)}
-        {step("Deposited", f.deposited, "−", f.deposited ? "slips recorded" : "no slip yet")}
-        {step("Pending", f.pending, "=", f.pending > 0 ? "still to bank" : "nothing left", true,
-          f.pending > 0 ? (f.deposit_status === "overdue" || f.deposit_status === "short" ? "short" : "brass") : "leaf")}
-      </div>
-    </section>
   );
 }
 
@@ -143,7 +107,7 @@ export default function Dashboard() {
             </Link>
           </dl>
 
-          <CashFlow f={f} />
+          <MoneyRoute f={f} activeDrivers={data.active_drivers} />
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
             <div className="min-w-0 space-y-6">

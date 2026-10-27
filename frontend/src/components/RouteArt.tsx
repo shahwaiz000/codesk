@@ -75,23 +75,6 @@ export default function RouteArt({ className = "" }: { className?: string }) {
       </Stop>
       <Label x={480} y={452} title="Deposited" sub="next working day" anchor="middle" delay={3.4} />
 
-      {/* the day's ledger, filling in as the van passes each stop */}
-      <g transform="translate(24 300)">
-        <rect width="232" height="138" rx="12" fill="#173d2f" stroke={MINT} strokeOpacity="0.25" />
-        <text x="18" y="30" fill={MINT} fontSize="13">Today</text>
-        {[
-          { y: 60, label: "Cash received", value: "36,873.50", delay: 1.7 },
-          { y: 88, label: "POS checked", value: "21,506.00", delay: 2.2 },
-          { y: 116, label: "To the bank", value: "36,807.50", delay: 3.5, strong: true },
-        ].map((r) => (
-          <g key={r.label} className="route-fade" style={{ animationDelay: `${r.delay}s` }}>
-            <text x="18" y={r.y} fill={r.strong ? PAPER : MINT} fontSize="14" fontWeight={r.strong ? 600 : 400}>{r.label}</text>
-            <text x="214" y={r.y} textAnchor="end" fill={r.strong ? BRASS : PAPER} fontSize="14" fontWeight="600"
-              style={{ fontVariantNumeric: "tabular-nums" }}>{r.value}</text>
-          </g>
-        ))}
-      </g>
-
       {/* the van; it drives the route once and parks before the bank */}
       <g transform={still ? "translate(416 390)" : undefined}>
         {!still && <animateMotion dur="4s" begin="0s" fill="freeze" rotate="auto" path={ROUTE}
