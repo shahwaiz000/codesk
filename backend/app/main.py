@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from . import audit, auth, collections
+from . import audit, auth, collections, pos
 from .deps import current_user
 from .config import settings
-from .database import Base, SessionLocal, engine, get_db
+from .database import Base, SessionLocal, add_missing_columns, engine, get_db
 from .models import AuditEvent, Collection, Deposit, Driver, Expense, User, iso
 from .money import to_sar
 from .seed import seed_demo
@@ -24,6 +24,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    added = add_missing_columns()
+    if added:
+        logging.getLogger("codesk").info("Updated the database: added %s", ", ".join(added))
     if settings.seed_demo_data:
         with SessionLocal() as db:
             seed_demo(db)
@@ -32,6 +35,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CODesk API", version="0.1.0", lifespan=lifespan)
 app.include_router(collections.router)
+app.include_router(pos.router)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(","), allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -92,13 +96,26 @@ class DriverIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     phone: str = Field("", max_length=20)
     hub: str = Field("", max_length=60)
+    pos_terminal: str = Field("", max_length=30)
 
 
 class DriverPatch(BaseModel):
     name: str | None = Field(None, min_length=2, max_length=80)
     phone: str | None = Field(None, max_length=20)
     hub: str | None = Field(None, max_length=60)
+    pos_terminal: str | None = Field(None, max_length=30)
     active: bool | None = None
+
+
+def _clean_terminal(db: Session, terminal: str, driver_id: int | None) -> str:
+    """Terminal IDs are compared without spaces; one terminal can belong to one active driver."""
+    t = "".join(terminal.split()).upper()
+    if t:
+        other = db.query(Driver).filter(Driver.pos_terminal == t, Driver.active.is_(True),
+                                        Driver.id != (driver_id or 0)).first()
+        if other:
+            raise HTTPException(409, f"Terminal {t} is already given to {other.code} {other.name}. Remove it there first")
+    return t
 
 
 def _clean_code(code: str) -> str:
@@ -118,6 +135,7 @@ def _driver_or_404(db: Session, did: int) -> Driver:
 def _driver_dict(d: Driver, stats: dict | None = None) -> dict:
     s = stats or {}
     return {"id": d.id, "code": d.code, "name": d.name, "phone": d.phone, "hub": d.hub, "active": d.active,
+            "pos_terminal": d.pos_terminal,
             "last_collection": iso(s.get("last")), "days_collected": s.get("days", 0),
             "cash_shortage": to_sar(s.get("short", 0)), "open_advances": to_sar(s.get("advances", 0)),
             "open_advance_count": s.get("advance_count", 0)}
@@ -145,7 +163,8 @@ def create_driver(body: DriverIn, db: Session = Depends(get_db), user: str = Dep
     code = _clean_code(body.code)
     if db.query(Driver).filter(func.upper(Driver.code) == code).first():
         raise HTTPException(409, f"A driver with ID {code} already exists")
-    drv = Driver(code=code, name=" ".join(body.name.split()), phone=body.phone.strip(), hub=body.hub.strip())
+    drv = Driver(code=code, name=" ".join(body.name.split()), phone=body.phone.strip(), hub=body.hub.strip(),
+                 pos_terminal=_clean_terminal(db, body.pos_terminal, None))
     db.add(drv)
     db.flush()
     audit.record(db, user, "created", "driver", drv.id, f"Added driver {code} {drv.name}")
@@ -156,8 +175,12 @@ def create_driver(body: DriverIn, db: Session = Depends(get_db), user: str = Dep
 @app.patch("/api/drivers/{did}")
 def update_driver(did: int, body: DriverPatch, db: Session = Depends(get_db), user: str = Depends(current_user)):
     drv = _driver_or_404(db, did)
+    if body.pos_terminal is not None:
+        body.pos_terminal = _clean_terminal(db, body.pos_terminal, drv.id)
+    if body.active and not drv.active and drv.pos_terminal:
+        _clean_terminal(db, drv.pos_terminal, drv.id)  # reactivating must not create two drivers on one terminal
     changes = []
-    for field in ("name", "phone", "hub", "active"):
+    for field in ("name", "phone", "hub", "pos_terminal", "active"):
         value = getattr(body, field)
         if value is None:
             continue

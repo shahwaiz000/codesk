@@ -3,7 +3,7 @@ import { useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import HandoverDialog from "../components/HandoverDialog";
 import { Icon } from "../components/icons";
-import ImportDialog from "../components/ImportDialog";
+import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, send, useApi } from "../lib";
 import type { CollectionDay, Driver, Handover } from "../types";
@@ -17,6 +17,15 @@ function Figure({ label, children, foot }: { label: string; children: React.Reac
     </div>
   );
 }
+
+const HANDOVER_PREVIEW = [
+  { label: "Driver", cell: (r: PreviewRow) => <><span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> <span className="text-ink-soft">{r.driver_name as string}</span></> },
+  { label: "Expected", right: true, cell: money("expected_cash") },
+  { label: "Cash", right: true, cell: money("cash_received") },
+  { label: "Difference", right: true, cell: (r: PreviewRow) => (r.difference as number)
+      ? <Money value={r.difference as number} tone={(r.difference as number) < 0 ? "short" : "brass"} /> : <span className="text-ink-faint">-</span> },
+  { label: "POS", right: true, cell: money("pos_amount") },
+];
 
 function StatusBadge({ h }: { h: Handover }) {
   if (h.status === "short") return <Badge tone="short">Short</Badge>;
@@ -110,7 +119,7 @@ export default function Collections() {
                       <th className="px-3 py-2.5 text-right font-medium">Expected cash</th>
                       <th className="px-3 py-2.5 text-right font-medium">Cash counted</th>
                       <th className="px-3 py-2.5 text-right font-medium">Difference</th>
-                      <th className="px-3 py-2.5 text-right font-medium">POS</th>
+                      <th className="px-3 py-2.5 text-right font-medium">POS terminal</th>
                       <th className="px-3 py-2.5 text-right font-medium">Total</th>
                       <th className="px-3 py-2.5 font-medium">Status</th>
                       <th className="px-5 py-2.5"><span className="sr-only">Actions</span></th>
@@ -186,7 +195,10 @@ export default function Collections() {
           onClose={() => setDialog(null)} onSaved={() => { setDialog(null); changed(); }} />
       )}
       {importing && (
-        <ImportDialog day={day} onClose={() => setImporting(false)}
+        <ImportDialog day={day} title="Import handovers" endpoint="/collections/import" templateUrl="/api/collections/template"
+          noun={["handover", "handovers"]} columns={HANDOVER_PREVIEW}
+          intro="Upload the day's driver list as CSV or Excel. Each row needs a driver ID, the expected cash and the cash received. POS total, orders and a note are optional."
+          onClose={() => setImporting(false)}
           onSaved={(dates) => { setImporting(false); if (dates.length === 1) setDay(dates[0]); changed(); }} />
       )}
       {deleting && (

@@ -5,7 +5,7 @@ import Drivers from "./Drivers";
 import type { Driver } from "../types";
 
 const base: Omit<Driver, "id" | "code" | "name" | "hub" | "active"> = {
-  phone: "", last_collection: "2026-10-26", days_collected: 30, cash_shortage: 0, open_advances: 0, open_advance_count: 0,
+  phone: "", pos_terminal: "", last_collection: "2026-10-26", days_collected: 30, cash_shortage: 0, open_advances: 0, open_advance_count: 0,
 };
 const DRIVERS: Driver[] = [
   { ...base, id: 1, code: "D-101", name: "Faisal Al-Harbi", hub: "North Hub", active: true, cash_shortage: 20 },
@@ -53,5 +53,5 @@ test("adding a driver sends the form", async () => {
   await userEvent.type(screen.getByLabelText("Driver ID"), "D-113");
   await userEvent.type(screen.getByLabelText("Full name"), "New Driver");
   await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add driver" }));
-  await waitFor(() => expect(posted).toEqual([{ code: "D-113", name: "New Driver", phone: "", hub: "" }]));
+  await waitFor(() => expect(posted).toEqual([{ code: "D-113", name: "New Driver", phone: "", hub: "", pos_terminal: "" }]));
 });

@@ -32,7 +32,7 @@ def row_dict(c: Collection) -> dict:
     return {"id": c.id, "business_date": c.business_date.isoformat(), "driver_id": c.driver_id,
             "driver_code": c.driver.code, "driver_name": c.driver.name, "hub": c.driver.hub,
             "orders": c.orders, "expected_cash": to_sar(c.expected_cash), "cash_received": to_sar(c.cash_received),
-            "difference": to_sar(diff), "status": status_of(diff), "pos_amount": to_sar(c.pos_amount),
+            "difference": to_sar(diff), "status": status_of(diff), "pos_amount": to_sar(c.pos_amount), "pos_terminal": c.pos_terminal,
             "total": to_sar(c.cash_received + c.pos_amount), "note": c.note, "created_by": c.created_by}
 
 
@@ -107,7 +107,8 @@ def save_handover(db: Session, user: str, day: date, driver: Driver, orders: int
                   pos: int, note: str, source: str = "") -> tuple[Collection, str]:
     """Create or update one driver's handover for a day. Returns (row, "new" | "updated" | "same")."""
     existing = db.query(Collection).filter_by(business_date=day, driver_id=driver.id).first()
-    values = {"orders": orders, "expected_cash": expected, "cash_received": received, "pos_amount": pos, "note": note}
+    values = {"orders": orders, "expected_cash": expected, "cash_received": received, "pos_amount": pos, "note": note,
+              "pos_terminal": (existing.pos_terminal if existing and existing.pos_terminal else driver.pos_terminal)}
     if existing:
         if all(getattr(existing, k) == v for k, v in values.items()):
             return existing, "same"

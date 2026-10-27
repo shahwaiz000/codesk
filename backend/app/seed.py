@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
-from .models import Collection, Deposit, Driver, Expense
+from .models import Collection, Deposit, Driver, Expense, PosOrder
 
 DRIVERS = [
     ("D-101", "Faisal Al-Harbi", "North Hub"), ("D-102", "Imran Qureshi", "North Hub"),
@@ -32,6 +32,8 @@ PLANTED = {
     "late_deposit": (20, 3),      # this day's cash reached the bank 3 working days later instead of 1
     "split_deposit": 5,           # this day was deposited with two slips
     "undeposited": 0,             # the latest day: cash is on hand, deposit is due today
+    # (day position, driver, terminal total minus the system's POS orders, in SAR)
+    "pos_differences": [(1, "D-105", -150.0), (4, "D-102", 85.5), (7, "D-108", -320.0), (13, "D-111", -60.0)],
 }
 
 
@@ -71,16 +73,18 @@ def seed_demo(db: Session, end: date | None = None) -> None:
     rng = random.Random(2026)
     days = business_days(end or default_end_date())
     by_code = {}
-    for code, name, hub in DRIVERS:
+    for i, (code, name, hub) in enumerate(DRIVERS):
         drv = Driver(code=code, name=name, hub=hub, phone=f"05{rng.randint(10_000_000, 99_999_999)}",
-                     active=code not in INACTIVE)
+                     pos_terminal=f"6031{1101 + i}", active=code not in INACTIVE)
         db.add(drv)
         by_code[code] = drv
     db.flush()
 
     differences = {(pos, code): sar * 100 for pos, code, sar in PLANTED["cash_differences"]}
+    pos_diffs = {(pos, code): round(sar * 100) for pos, code, sar in PLANTED["pos_differences"]}
     cash_by_day: dict[int, int] = {}
-    for pos, day in enumerate(days):
+    order_no = 7_400_000
+    for pos, day in reversed(list(enumerate(days))):  # oldest first, so order numbers grow with time
         total = 0
         for code, drv in by_code.items():
             if not drv.active:
@@ -89,13 +93,16 @@ def seed_demo(db: Session, end: date | None = None) -> None:
             cash = pos_amt = 0
             for _ in range(orders):
                 value = rng.randint(70, 840) * 50  # 35 to 420 SAR, in halalas
+                order_no += rng.randint(1, 9)
                 if rng.random() < 0.62:
                     cash += value
                 else:
                     pos_amt += value
+                    db.add(PosOrder(order_no=f"ORD{order_no}", business_date=day, driver_id=drv.id, amount=value, created_by="demo"))
             received = cash + differences.get((pos, code), 0)
             db.add(Collection(business_date=day, driver_id=drv.id, orders=orders, expected_cash=cash,
-                              cash_received=received, pos_amount=pos_amt, created_by="demo"))
+                              cash_received=received, pos_amount=pos_amt + pos_diffs.get((pos, code), 0),
+                              pos_terminal=drv.pos_terminal, created_by="demo"))
             total += received
         cash_by_day[pos] = total
 

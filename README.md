@@ -4,7 +4,7 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 
 **All data in this project is fictional.** No real company, driver or bank data is used anywhere.
 
-> Status: stage 2 of 6, work in progress. This file says exactly what works.
+> Status: stage 3 of 6, work in progress. This file says exactly what works.
 
 ## The daily cycle it follows
 
@@ -20,7 +20,9 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 - **Login.** One owner account, scrypt password hashing, HttpOnly session cookie, lockout after five wrong passwords, and requests from unknown websites are refused.
 - **Collections.** Pick a business day (Fridays are skipped) and see every driver's handover: expected cash from the system, cash counted at the desk, the difference, POS card total and the day total. Short drivers are marked in red and extra cash in brass, and drivers who have not handed over yet are listed with a one-click record button. Handovers can be recorded, corrected or deleted, and every change is logged with the old and new amounts.
 - **Import.** Upload the day's driver list as CSV or Excel. The file is checked first and nothing is saved until you confirm: unknown or inactive drivers, unreadable amounts, wrong order counts and the same driver twice are shown row by row. Rows already saved with the same values are skipped, and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID" and so on), amounts like "SAR 1,234.50" are understood, and dates are read day-first (26/10/2026). A template can be downloaded from the import window.
-- **Drivers.** Add, edit, deactivate or reactivate drivers. Each driver shows the last handover day, total cash shortages and advances not yet recovered. A driver with finance records cannot be deleted, only marked inactive.
+- **POS check.** For each driver and day, the orders the system shows as closed by POS against the total on his POS terminal, with the exact difference (terminal short or over). Click a driver to see his POS orders; an order whose amount equals the difference is highlighted, because it is usually the one closed as POS but paid in cash. Each difference can be marked explained (a reason is required) or needing follow-up, or reopened. If the numbers change after a review, the review shows as out of date and the difference is open again.
+- **POS imports.** The system's POS-closed orders (order number, driver ID, amount; cash rows are skipped when the file has a payment method column) and the terminal sheet (terminal ID and the day's total, matched to drivers by terminal ID). Both are checked before anything is saved.
+- **Drivers.** Add, edit, deactivate or reactivate drivers, each with his POS terminal ID (one terminal per active driver). Each handover remembers the terminal used that day, so moving a machine to another driver does not change old days. Each driver shows the last handover day, total cash shortages and advances not yet recovered. A driver with finance records cannot be deleted, only marked inactive.
 - **Activity log.** Every change is saved with who made it and when. Entries cannot be edited or deleted (blocked in the database layer too).
 - **Exact money.** Amounts are stored as whole halalas, so totals never drift the way decimal numbers in floating point do.
 - **Fictional demo data.** 12 drivers and 30 working days (Fridays off) of handovers, expenses, advances and deposits, with mistakes planted on purpose so every check has something to find.
@@ -29,7 +31,6 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 
 | Stage | What |
 |---|---|
-| 3 | POS reconciliation: closed orders against POS transactions, exact differences, approve or reject |
 | 4 | Expenses and advances, and bank deposits with pending amounts |
 | 5 | Dashboard and the daily finance report (Excel and PDF) |
 | 6 | Polish, screenshots and interview notes |
@@ -44,6 +45,8 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 | Deposit short | 1 day: 500 SAR less than the cash to deposit |
 | Late deposit | 1 day reached the bank 3 working days later |
 | Not deposited yet | the latest day (due today) |
+| POS terminal short | 3 driver-days: 60, 150 and 320 SAR |
+| POS terminal over | 1 driver-day: 85.50 SAR (a card swiped twice) |
 
 The tests check that the app finds exactly these.
 
@@ -76,6 +79,8 @@ npm run dev
 ```
 
 Open http://localhost:5173 and create your owner account. The demo data is added the first time the backend starts with an empty database. To start again from fresh demo data, stop the backend and delete `backend\codesk.db`.
+
+When a new version adds columns to the database, they are added automatically at start-up.
 
 ## How it is built
 

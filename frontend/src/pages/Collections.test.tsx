@@ -8,7 +8,7 @@ import type { CollectionDay, Handover } from "../types";
 
 const row = (over: Partial<Handover>): Handover => ({
   id: 1, business_date: "2026-10-25", driver_id: 1, driver_code: "D-101", driver_name: "Faisal Al-Harbi", hub: "North Hub",
-  orders: 20, expected_cash: 1000, cash_received: 1000, difference: 0, status: "ok", pos_amount: 500, total: 1500,
+  orders: 20, expected_cash: 1000, cash_received: 1000, difference: 0, status: "ok", pos_amount: 500, pos_terminal: "60311101", total: 1500,
   note: "", created_by: "demo", ...over,
 });
 const DAY: CollectionDay = {

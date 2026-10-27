@@ -24,3 +24,29 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def add_missing_columns() -> list[str]:
+    """Add columns that newer versions of the app need to an existing SQLite database.
+    (New tables are created by create_all; SQLite cannot add columns that way.)"""
+    if not _sqlite:
+        return []
+    from sqlalchemy import inspect, text
+    added = []
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                kind = col.type.compile(dialect=engine.dialect)
+                sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {kind}'
+                if default is not None:
+                    sql += " DEFAULT " + (f"'{default}'" if isinstance(default, str) else str(int(default)))
+                conn.execute(text(sql))
+                added.append(f"{table.name}.{col.name}")
+    return added

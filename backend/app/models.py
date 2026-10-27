@@ -43,6 +43,7 @@ class Driver(Base):
     name: Mapped[str] = mapped_column(String(80))
     phone: Mapped[str] = mapped_column(String(20), default="")
     hub: Mapped[str] = mapped_column(String(60), default="")
+    pos_terminal: Mapped[str] = mapped_column(String(30), default="")  # the terminal ID of the driver's POS machine
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -57,7 +58,8 @@ class Collection(Base):
     orders: Mapped[int] = mapped_column(Integer, default=0)          # delivered COD orders
     expected_cash: Mapped[int] = mapped_column(Integer, default=0)   # cash the system says the driver collected
     cash_received: Mapped[int] = mapped_column(Integer, default=0)   # cash actually counted at the desk
-    pos_amount: Mapped[int] = mapped_column(Integer, default=0)      # card payments taken on the driver's POS
+    pos_amount: Mapped[int] = mapped_column(Integer, default=0)      # the day's total on the driver's POS terminal
+    pos_terminal: Mapped[str] = mapped_column(String(30), default="")  # terminal used that day (machines can move)
     note: Mapped[str] = mapped_column(String(300), default="")
     created_by: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -97,6 +99,35 @@ class Deposit(Base):
     note: Mapped[str] = mapped_column(String(300), default="")
     created_by: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PosOrder(Base):
+    """An order the delivery system shows as closed by POS (card) payment."""
+    __tablename__ = "pos_orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_no: Mapped[str] = mapped_column(String(40), unique=True)
+    business_date: Mapped[date] = mapped_column(Date, index=True)
+    driver_id: Mapped[int] = mapped_column(ForeignKey("drivers.id"))
+    amount: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(40), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    driver: Mapped[Driver] = relationship()
+
+
+class PosReview(Base):
+    """A person's decision on one driver's POS difference for one day. The totals at the time of the
+    decision are kept, so a review that no longer matches the numbers shows as out of date."""
+    __tablename__ = "pos_reviews"
+    __table_args__ = (UniqueConstraint("business_date", "driver_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_date: Mapped[date] = mapped_column(Date, index=True)
+    driver_id: Mapped[int] = mapped_column(ForeignKey("drivers.id"))
+    status: Mapped[str] = mapped_column(String(20))  # explained | follow_up
+    note: Mapped[str] = mapped_column(String(300), default="")
+    system_total: Mapped[int] = mapped_column(Integer)
+    terminal_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    decided_by: Mapped[str] = mapped_column(String(40), default="")
+    decided_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class AuditEvent(Base):

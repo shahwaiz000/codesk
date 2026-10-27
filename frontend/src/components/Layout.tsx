@@ -8,6 +8,7 @@ type NavItem = { to: string; label: string; icon: IconName };
 export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "Daily desk", items: [
     { to: "/collections", label: "Collections", icon: "cash" },
+    { to: "/pos", label: "POS check", icon: "card" },
   ] },
   { title: "Records", items: [
     { to: "/drivers", label: "Drivers", icon: "drivers" },

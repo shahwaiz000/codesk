@@ -1,7 +1,7 @@
 export interface AuthStatus { auth_enabled: boolean; needs_setup: boolean; user: { username: string } | null }
 
 export interface Driver {
-  id: number; code: string; name: string; phone: string; hub: string; active: boolean;
+  id: number; code: string; name: string; phone: string; hub: string; active: boolean; pos_terminal: string;
   last_collection: string | null; days_collected: number;
   cash_shortage: number; open_advances: number; open_advance_count: number;
 }
@@ -15,7 +15,7 @@ export type CashStatus = "ok" | "short" | "over";
 export interface Handover {
   id: number; business_date: string; driver_id: number; driver_code: string; driver_name: string; hub: string;
   orders: number; expected_cash: number; cash_received: number; difference: number; status: CashStatus;
-  pos_amount: number; total: number; note: string; created_by: string;
+  pos_amount: number; pos_terminal: string; total: number; note: string; created_by: string;
 }
 
 export interface DayTotals {
@@ -28,11 +28,15 @@ export interface CollectionDay {
   missing: { id: number; code: string; name: string; hub: string }[];
 }
 
-export type ImportStatus = "new" | "update" | "same" | "error";
-export interface ImportRow {
-  line: number; status: ImportStatus; problems: string[]; driver_code: string | null; driver_name: string;
-  date: string | null; orders: number; expected_cash: number; cash_received: number; pos_amount: number; difference: number; note: string;
+export type PosStatus = "agrees" | "terminal_short" | "terminal_over" | "no_terminal";
+export interface PosReview { status: "explained" | "follow_up"; note: string; by: string; at: string; stale: boolean }
+export interface PosRow {
+  driver_id: number; driver_code: string; driver_name: string; terminal: string | null;
+  system_total: number; order_count: number; terminal_total: number | null; difference: number | null;
+  status: PosStatus; status_text: string; review: PosReview | null; open: boolean;
 }
-export interface ImportResult {
-  file: string; rows: ImportRow[]; counts: Record<ImportStatus, number>; committed: boolean; saved: number; dates: string[];
+export interface PosTotals {
+  system_total: number; terminal_total: number; difference: number; order_count: number; drivers: number;
+  agrees: number; differences: number; no_terminal: number; open: number; explained: number; short: number; over: number;
 }
+export interface PosDay { date: string; rows: PosRow[]; totals: PosTotals; orders_imported: boolean }

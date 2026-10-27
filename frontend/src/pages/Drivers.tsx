@@ -4,11 +4,11 @@ import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, P
 import { fmtDay, send, useApi } from "../lib";
 import type { Driver } from "../types";
 
-type Draft = { code: string; name: string; phone: string; hub: string };
-const BLANK: Draft = { code: "", name: "", phone: "", hub: "" };
+type Draft = { code: string; name: string; phone: string; hub: string; pos_terminal: string };
+const BLANK: Draft = { code: "", name: "", phone: "", hub: "", pos_terminal: "" };
 
 function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null; hubs: string[]; onClose: () => void; onSaved: () => void }) {
-  const [draft, setDraft] = useState<Draft>(driver ? { code: driver.code, name: driver.name, phone: driver.phone, hub: driver.hub } : BLANK);
+  const [draft, setDraft] = useState<Draft>(driver ? { code: driver.code, name: driver.name, phone: driver.phone, hub: driver.hub, pos_terminal: driver.pos_terminal } : BLANK);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof Draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
@@ -17,7 +17,7 @@ function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null;
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      if (driver) await send(`/drivers/${driver.id}`, "PATCH", { name: draft.name, phone: draft.phone, hub: draft.hub });
+      if (driver) await send(`/drivers/${driver.id}`, "PATCH", { name: draft.name, phone: draft.phone, hub: draft.hub, pos_terminal: draft.pos_terminal });
       else await send("/drivers", "POST", draft);
       onSaved();
     } catch (err) { setError((err as Error).message); setBusy(false); }
@@ -39,6 +39,9 @@ function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null;
           <label className="block text-sm font-medium">Mobile
             <input className="field" inputMode="tel" value={draft.phone} onChange={set("phone")} placeholder="05XXXXXXXX" /></label>
         </div>
+        <label className="block text-sm font-medium">POS terminal ID
+          <input className="field num" value={draft.pos_terminal} onChange={set("pos_terminal")} placeholder="From your terminal sheet, e.g. 60311101" />
+          <span className="mt-1 block text-xs font-normal text-ink-faint">Used to match the terminal sheet to this driver. One terminal belongs to one active driver.</span></label>
         {driver && <p className="text-xs text-ink-faint">The driver ID cannot change, because collections and expenses are linked to it.</p>}
         <FormError message={error} />
         <div className="flex justify-end gap-2 pt-1">
@@ -63,7 +66,7 @@ export default function Drivers() {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (data ?? []).filter((d) => (showInactive || d.active) && (!hub || d.hub === hub)
-      && (!q || d.code.toLowerCase().includes(q) || d.name.toLowerCase().includes(q) || d.phone.includes(q)));
+      && (!q || d.code.toLowerCase().includes(q) || d.name.toLowerCase().includes(q) || d.phone.includes(q) || d.pos_terminal.toLowerCase().includes(q)));
   }, [data, query, hub, showInactive]);
 
   const active = (data ?? []).filter((d) => d.active);
@@ -108,7 +111,7 @@ export default function Drivers() {
               <label className="relative min-w-[14rem] flex-1 sm:max-w-xs">
                 <span className="sr-only">Search drivers</span>
                 <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
-                <input className="field mt-0 pl-9" placeholder="Search by ID, name or mobile" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <input className="field mt-0 pl-9" placeholder="Search by ID, name, mobile or terminal" value={query} onChange={(e) => setQuery(e.target.value)} />
               </label>
               <label className="text-sm"><span className="sr-only">Hub</span>
                 <select className="field mt-0 w-auto" value={hub} onChange={(e) => setHub(e.target.value)}>
@@ -126,11 +129,12 @@ export default function Drivers() {
                 : <Empty title="No driver matches" hint="Try another search, choose all hubs, or show inactive drivers." />
             ) : (
               <div className="relative overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm">
+                <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-paper-line text-left text-xs text-ink-faint">
                       <th className="px-5 py-2.5 font-medium">Driver</th>
                       <th className="px-3 py-2.5 font-medium">Hub</th>
+                      <th className="px-3 py-2.5 font-medium">POS terminal</th>
                       <th className="px-3 py-2.5 font-medium">Last handover</th>
                       <th className="px-3 py-2.5 text-right font-medium">Cash short (SAR)</th>
                       <th className="px-3 py-2.5 text-right font-medium">Open advances (SAR)</th>
@@ -151,6 +155,7 @@ export default function Drivers() {
                           </div>
                         </td>
                         <td className="px-3 py-3 text-ink-soft">{d.hub || "-"}</td>
+                        <td className="num px-3 py-3 text-ink-soft">{d.pos_terminal || <span className="text-ink-faint">Not set</span>}</td>
                         <td className="px-3 py-3 text-ink-soft">{d.last_collection ? fmtDay(d.last_collection) : "None yet"}</td>
                         <td className="px-3 py-3 text-right">{d.cash_shortage > 0 ? <Money value={d.cash_shortage} tone="short" className="font-medium" /> : <span className="text-ink-faint">-</span>}</td>
                         <td className="px-3 py-3 text-right">
