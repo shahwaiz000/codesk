@@ -1,0 +1,23 @@
+@import "@fontsource-variable/schibsted-grotesk";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply bg-paper text-ink antialiased; }
+h1, h2, h3 { letter-spacing: -0.012em; }
+:focus-visible { @apply outline-2 outline-offset-2 outline-leaf; }
+
+/* Amounts line up in columns, like a ledger. */
+.num { font-variant-numeric: tabular-nums; }
+
+@layer components {
+  .field { @apply mt-1 w-full rounded-lg border border-paper-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-leaf focus:outline-none focus:ring-2 focus:ring-leaf/20; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55; }
+  .btn-primary { @apply btn bg-ledger-900 text-white hover:bg-ledger-700; }
+  .btn-quiet { @apply btn border border-paper-line bg-white text-ink hover:bg-paper-deep; }
+  .btn-danger { @apply btn bg-short text-white hover:bg-short-dark; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

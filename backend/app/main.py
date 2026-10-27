@@ -1,0 +1,284 @@
+import logging
+import re
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import case, func
+from sqlalchemy.orm import Session
+
+from . import audit, auth
+from .config import settings
+from .database import Base, SessionLocal, engine, get_db
+from .models import AuditEvent, Collection, Deposit, Driver, Expense, User, iso
+from .money import to_sar
+from .seed import seed_demo
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(engine)
+    if settings.seed_demo_data:
+        with SessionLocal() as db:
+            seed_demo(db)
+    yield
+
+
+app = FastAPI(title="CODesk API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(","), allow_credentials=True,
+                   allow_methods=["*"], allow_headers=["*"])
+
+
+def _err(status: int, code: str, message: str):
+    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+
+
+OPEN_PATHS = ("/api/health", "/api/auth/")
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    path = request.url.path
+    if not settings.auth_enabled or not path.startswith("/api/") or request.method == "OPTIONS":
+        return await call_next(request)
+    if request.method not in SAFE_METHODS:  # a page on another site must not be able to act for the person
+        origin = request.headers.get("origin")
+        allowed = settings.cors_origins.split(",")
+        if origin and origin not in allowed and origin.split("://")[-1] != request.headers.get("host"):
+            return _err(403, "bad_origin", "This request came from an unknown website")
+    if any(path.startswith(p) for p in OPEN_PATHS):
+        return await call_next(request)
+    with SessionLocal() as db:
+        user = auth.user_for(db, request.cookies.get(auth.COOKIE))
+    if not user:
+        return _err(401, "not_logged_in", "Please log in")
+    request.state.username = user.username
+    return await call_next(request)
+
+
+@app.exception_handler(HTTPException)
+async def http_error(_: Request, exc: HTTPException):
+    return _err(exc.status_code, "http_error", str(exc.detail))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_: Request, exc: RequestValidationError):
+    def one(e):
+        field = ".".join(str(p) for p in e["loc"] if p != "body")
+        return f"{field}: {e['msg']}" if field else e["msg"]
+    return _err(422, "validation_error", "; ".join(one(e) for e in exc.errors()))
+
+
+def current_user(request: Request) -> str:
+    return getattr(request.state, "username", "") or "owner"
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "currency": settings.currency}
+
+
+# ---------------------------------------------------------------- drivers
+
+CODE_OK = re.compile(r"^[A-Z0-9][A-Z0-9-]{1,19}$")
+
+
+class DriverIn(BaseModel):
+    code: str = Field(min_length=2, max_length=20)
+    name: str = Field(min_length=2, max_length=80)
+    phone: str = Field("", max_length=20)
+    hub: str = Field("", max_length=60)
+
+
+class DriverPatch(BaseModel):
+    name: str | None = Field(None, min_length=2, max_length=80)
+    phone: str | None = Field(None, max_length=20)
+    hub: str | None = Field(None, max_length=60)
+    active: bool | None = None
+
+
+def _clean_code(code: str) -> str:
+    code = code.strip().upper()
+    if not CODE_OK.match(code):
+        raise HTTPException(422, "Driver ID can use letters, numbers and dashes, for example D-104")
+    return code
+
+
+def _driver_or_404(db: Session, did: int) -> Driver:
+    drv = db.get(Driver, did)
+    if not drv:
+        raise HTTPException(404, "Driver not found")
+    return drv
+
+
+def _driver_dict(d: Driver, stats: dict | None = None) -> dict:
+    s = stats or {}
+    return {"id": d.id, "code": d.code, "name": d.name, "phone": d.phone, "hub": d.hub, "active": d.active,
+            "last_collection": iso(s.get("last")), "days_collected": s.get("days", 0),
+            "cash_shortage": to_sar(s.get("short", 0)), "open_advances": to_sar(s.get("advances", 0)),
+            "open_advance_count": s.get("advance_count", 0)}
+
+
+@app.get("/api/drivers")
+def list_drivers(db: Session = Depends(get_db)):
+    diff = Collection.cash_received - Collection.expected_cash
+    coll = dict(
+        (r.driver_id, {"last": r.last, "days": r.days, "short": -int(r.short or 0)})
+        for r in db.query(Collection.driver_id, func.max(Collection.business_date).label("last"),
+                          func.count(Collection.id).label("days"),
+                          func.sum(case((diff < 0, diff), else_=0)).label("short"))
+        .group_by(Collection.driver_id)
+    )
+    for r in (db.query(Expense.driver_id, func.sum(Expense.amount), func.count(Expense.id))
+              .filter(Expense.category == "advance", Expense.settled_on.is_(None)).group_by(Expense.driver_id)):
+        coll.setdefault(r[0], {}).update(advances=int(r[1]), advance_count=r[2])
+    drivers = db.query(Driver).order_by(Driver.active.desc(), Driver.code).all()
+    return [_driver_dict(d, coll.get(d.id)) for d in drivers]
+
+
+@app.post("/api/drivers", status_code=201)
+def create_driver(body: DriverIn, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    code = _clean_code(body.code)
+    if db.query(Driver).filter(func.upper(Driver.code) == code).first():
+        raise HTTPException(409, f"A driver with ID {code} already exists")
+    drv = Driver(code=code, name=" ".join(body.name.split()), phone=body.phone.strip(), hub=body.hub.strip())
+    db.add(drv)
+    db.flush()
+    audit.record(db, user, "created", "driver", drv.id, f"Added driver {code} {drv.name}")
+    db.commit()
+    return _driver_dict(drv)
+
+
+@app.patch("/api/drivers/{did}")
+def update_driver(did: int, body: DriverPatch, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    drv = _driver_or_404(db, did)
+    changes = []
+    for field in ("name", "phone", "hub", "active"):
+        value = getattr(body, field)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            value = " ".join(value.split())
+        if getattr(drv, field) != value:
+            changes.append(f"{field}: {getattr(drv, field)!r} -> {value!r}")
+            setattr(drv, field, value)
+    if changes:
+        audit.record(db, user, "updated", "driver", drv.id, f"{drv.code}: " + "; ".join(changes))
+        db.commit()
+    return _driver_dict(drv)
+
+
+@app.delete("/api/drivers/{did}")
+def delete_driver(did: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    drv = _driver_or_404(db, did)
+    used = (db.query(Collection).filter_by(driver_id=did).count() + db.query(Expense).filter_by(driver_id=did).count())
+    if used:
+        raise HTTPException(409, f"{drv.code} has finance records, so it cannot be deleted. Mark the driver inactive instead")
+    audit.record(db, user, "deleted", "driver", drv.id, f"Deleted driver {drv.code} {drv.name}")
+    db.delete(drv)
+    db.commit()
+    return {"deleted": True}
+
+
+# ---------------------------------------------------------------- activity log
+
+@app.get("/api/audit")
+def list_audit(limit: int = 100, db: Session = Depends(get_db)):
+    rows = db.query(AuditEvent).order_by(AuditEvent.id.desc()).limit(max(1, min(limit, 500))).all()
+    return [{"id": r.id, "at": iso(r.at), "username": r.username, "action": r.action, "entity": r.entity,
+             "entity_id": r.entity_id, "summary": r.summary} for r in rows]
+
+
+@app.get("/api/meta")
+def meta(db: Session = Depends(get_db)):
+    """Facts the screens need on load: currency and the latest business day that has data."""
+    latest = db.query(func.max(Collection.business_date)).scalar()
+    first = db.query(func.min(Collection.business_date)).scalar()
+    return {"currency": settings.currency, "latest_business_date": iso(latest), "first_business_date": iso(first),
+            "deposit_count": db.query(Deposit).count()}
+
+
+# ---------------------------------------------------------------- login
+
+class Credentials(BaseModel):
+    username: str = Field(max_length=40)
+    password: str = Field(max_length=auth.MAX_PASSWORD)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(max_length=auth.MAX_PASSWORD)
+    new_password: str = Field(max_length=auth.MAX_PASSWORD)
+
+
+def _set_cookie(resp: JSONResponse, token: str):
+    resp.set_cookie(auth.COOKIE, token, max_age=settings.session_days * 86400, httponly=True,
+                    samesite="lax", secure=settings.auth_cookie_secure, path="/")
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request, db: Session = Depends(get_db)):
+    user = auth.user_for(db, request.cookies.get(auth.COOKIE)) if settings.auth_enabled else None
+    return {"auth_enabled": settings.auth_enabled, "needs_setup": settings.auth_enabled and db.query(User).count() == 0,
+            "user": {"username": user.username} if user else None}
+
+
+@app.post("/api/auth/setup", status_code=201)
+def auth_setup(body: Credentials, db: Session = Depends(get_db)):
+    if not settings.auth_enabled:
+        raise HTTPException(409, "Login is turned off for this server")
+    if db.query(User).count():
+        raise HTTPException(409, "An account already exists. Please log in")
+    problem = auth.check_username(body.username) or auth.check_password_rules(body.password)
+    if problem:
+        raise HTTPException(422, problem)
+    user = User(username=body.username, password_hash=auth.hash_password(body.password))
+    db.add(user)
+    db.commit()
+    resp = JSONResponse(status_code=201, content={"user": {"username": user.username}})
+    _set_cookie(resp, auth.start_session(db, user))
+    return resp
+
+
+@app.post("/api/auth/login")
+def auth_login(body: Credentials, db: Session = Depends(get_db)):
+    if auth.locked(body.username):
+        raise HTTPException(429, "Too many wrong attempts. Wait 10 minutes and try again")
+    user = auth.login_ok(db, body.username, body.password)
+    if not user:
+        auth.record_fail(body.username)
+        raise HTTPException(401, "Wrong username or password")
+    auth.clear_fails(body.username)
+    resp = JSONResponse(content={"user": {"username": user.username}})
+    _set_cookie(resp, auth.start_session(db, user))
+    return resp
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request, db: Session = Depends(get_db)):
+    auth.end_session(db, request.cookies.get(auth.COOKIE))
+    resp = JSONResponse(content={"logged_out": True})
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return resp
+
+
+@app.post("/api/auth/password")
+def auth_password(body: PasswordChange, request: Request, db: Session = Depends(get_db)):
+    token = request.cookies.get(auth.COOKIE)
+    user = auth.user_for(db, token)
+    if not user:
+        raise HTTPException(401, "Please log in")
+    if not auth.verify_password(body.current_password, user.password_hash):
+        raise HTTPException(403, "Your current password is wrong")
+    problem = auth.check_password_rules(body.new_password)
+    if problem:
+        raise HTTPException(422, problem)
+    user.password_hash = auth.hash_password(body.new_password)
+    db.commit()
+    auth.end_other_sessions(db, user, token)  # other devices must log in again
+    return {"changed": True}
