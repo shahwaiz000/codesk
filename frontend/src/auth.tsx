@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Mark } from "./components/icons";
+import RouteArt from "./components/RouteArt";
 import { FormError } from "./components/ui";
 import { AUTH_LOST, api } from "./lib";
 import type { AuthStatus } from "./types";
@@ -14,13 +15,13 @@ function Shell({ title, subtitle, children }: { title: string; subtitle: string;
     <div className="grid min-h-screen bg-paper lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <aside className="relative hidden overflow-hidden bg-ledger-900 p-12 text-white lg:flex lg:flex-col">
         <div className="flex items-center gap-3"><Mark /><span className="text-lg font-semibold">CODesk</span></div>
-        <div className="mt-auto max-w-sm">
+        <div className="flex min-h-0 flex-1 items-center justify-center py-8">
+          <RouteArt className="h-full max-h-[480px] w-full max-w-[560px]" />
+        </div>
+        <div className="max-w-md">
           <p className="text-[32px] font-semibold leading-[1.15]">Every riyal from the driver to the bank.</p>
           <p className="mt-4 text-sm leading-relaxed text-ledger-300">Cash and POS handovers, POS checks against closed orders, driver expenses and next-day deposits, in one place.</p>
         </div>
-        <svg className="pointer-events-none absolute -right-10 top-24 h-[420px] w-[420px] opacity-[0.07]" viewBox="0 0 100 100" aria-hidden="true">
-          {Array.from({ length: 12 }, (_, i) => <path key={i} d={`M0 ${8 + i * 8}h${i % 3 === 2 ? 60 : 100}`} stroke="#e2b55a" strokeWidth="1.2" />)}
-        </svg>
       </aside>
       <main className="grid place-items-center p-6">
         <div className="w-full max-w-sm">
