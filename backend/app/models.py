@@ -81,6 +81,7 @@ class Expense(Base):
     reference: Mapped[str] = mapped_column(String(60), default="")  # receipt or voucher number
     note: Mapped[str] = mapped_column(String(300), default="")
     settled_on: Mapped[date | None] = mapped_column(Date, nullable=True)  # advances only: when it was recovered
+    settlement_method: Mapped[str] = mapped_column(String(10), default="")  # salary | cash (cash comes back into that day's deposit)
     settlement_note: Mapped[str] = mapped_column(String(300), default="")
     created_by: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

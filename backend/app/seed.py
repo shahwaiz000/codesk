@@ -121,6 +121,7 @@ def seed_demo(db: Session, end: date | None = None) -> None:
         db.add(Expense(business_date=days[pos], driver_id=by_code[code].id, category="advance", amount=sar * 100,
                        reference=f"ADV-{rng.randint(1000, 9999)}", note="Trip advance",
                        settled_on=days[settled] if settled is not None else None,
+                       settlement_method="salary" if settled is not None else "",
                        settlement_note="Recovered from salary" if settled is not None else "", created_by="demo"))
         spent_by_day[pos] += sar * 100
 

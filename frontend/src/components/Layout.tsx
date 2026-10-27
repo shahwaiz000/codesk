@@ -9,6 +9,8 @@ export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "Daily desk", items: [
     { to: "/collections", label: "Collections", icon: "cash" },
     { to: "/pos", label: "POS check", icon: "card" },
+    { to: "/expenses", label: "Expenses & advances", icon: "receipt" },
+    { to: "/deposits", label: "Bank deposits", icon: "bank" },
   ] },
   { title: "Records", items: [
     { to: "/drivers", label: "Drivers", icon: "drivers" },

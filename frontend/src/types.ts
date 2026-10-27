@@ -40,3 +40,26 @@ export interface PosTotals {
   agrees: number; differences: number; no_terminal: number; open: number; explained: number; short: number; over: number;
 }
 export interface PosDay { date: string; rows: PosRow[]; totals: PosTotals; orders_imported: boolean }
+
+export interface ExpenseRow {
+  id: number; business_date: string; driver_id: number; driver_code: string; driver_name: string;
+  category: string; category_text: string; amount: number; reference: string; note: string; created_by: string;
+  settled_on: string | null; settlement_method: "salary" | "cash" | null; settlement_note: string; days_open?: number;
+}
+export interface ExpenseDay {
+  date: string; rows: ExpenseRow[];
+  totals: { expenses: number; advances: number; total: number; count: number; by_category: { category: string; category_text: string; amount: number }[] };
+  categories: { value: string; text: string }[];
+}
+export interface Advances { rows: ExpenseRow[]; open_total: number; open_count: number; drivers: number }
+
+export type DepositStatus = "deposited" | "not_due" | "due_today" | "overdue" | "short" | "over" | "nothing";
+export interface Slip { id: number; deposit_date: string; bank: string; slip_ref: string; amount: number; note: string; created_by: string }
+export interface DepositDay {
+  date: string; due_on: string; cash_received: number; paid_out: number; returned: number; to_deposit: number;
+  deposited: number; pending: number; status: DepositStatus; status_text: string; late: boolean; days_late: number; slips: Slip[];
+}
+export interface DepositLedger {
+  rows: DepositDay[]; banks: string[]; today: string;
+  totals: { cash_on_hand: number; overdue: number; overdue_days: number; short: number; short_days: number; due_today: number; not_due: number; deposited: number; late_days: number };
+}

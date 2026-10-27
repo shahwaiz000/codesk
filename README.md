@@ -4,7 +4,7 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 
 **All data in this project is fictional.** No real company, driver or bank data is used anywhere.
 
-> Status: stage 3 of 6, work in progress. This file says exactly what works.
+> Status: stage 4 of 6, work in progress. This file says exactly what works.
 
 ## The daily cycle it follows
 
@@ -22,6 +22,8 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 - **Import.** Upload the day's driver list as CSV or Excel. The file is checked first and nothing is saved until you confirm: unknown or inactive drivers, unreadable amounts, wrong order counts and the same driver twice are shown row by row. Rows already saved with the same values are skipped, and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID" and so on), amounts like "SAR 1,234.50" are understood, and dates are read day-first (26/10/2026). A template can be downloaded from the import window.
 - **POS check.** For each driver and day, the orders the system shows as closed by POS against the total on his POS terminal, with the exact difference (terminal short or over). Click a driver to see his POS orders; an order whose amount equals the difference is highlighted, because it is usually the one closed as POS but paid in cash. Each difference can be marked explained (a reason is required) or needing follow-up, or reopened. If the numbers change after a review, the review shows as out of date and the difference is open again.
 - **POS imports.** The system's POS-closed orders (order number, driver ID, amount; cash rows are skipped when the file has a payment method column) and the terminal sheet (terminal ID and the day's total, matched to drivers by terminal ID). Both are checked before anything is saved.
+- **Expenses and advances.** Pay out fuel, tolls, parking, travel, maintenance or other expenses, or an advance, to a driver from the day's cash, with a receipt number and a note. Open advances are listed with how many days they have been open. An advance is recovered either by salary deduction (nothing comes back to the desk) or as cash returned at the desk, which is added to that day's cash to deposit. Recovered advances can be reopened, and cannot be changed or deleted until they are.
+- **Bank deposits.** A day-by-day ledger: cash received, paid out, cash to deposit, deposited and pending. Each day's cash is due at the bank on the next working day (Fridays skipped), and every day shows one status: cash on hand, due today, overdue, deposit short, deposited or deposited too much, plus how many days late a deposit was. A day can be deposited with several slips; a slip number can only be used once, a slip cannot be more than what is still pending, and a deposit cannot be dated before its business day.
 - **Drivers.** Add, edit, deactivate or reactivate drivers, each with his POS terminal ID (one terminal per active driver). Each handover remembers the terminal used that day, so moving a machine to another driver does not change old days. Each driver shows the last handover day, total cash shortages and advances not yet recovered. A driver with finance records cannot be deleted, only marked inactive.
 - **Activity log.** Every change is saved with who made it and when. Entries cannot be edited or deleted (blocked in the database layer too).
 - **Exact money.** Amounts are stored as whole halalas, so totals never drift the way decimal numbers in floating point do.
@@ -31,7 +33,6 @@ A finance desk for a logistics company's daily cash-on-delivery (COD) work: driv
 
 | Stage | What |
 |---|---|
-| 4 | Expenses and advances, and bank deposits with pending amounts |
 | 5 | Dashboard and the daily finance report (Excel and PDF) |
 | 6 | Polish, screenshots and interview notes |
 
