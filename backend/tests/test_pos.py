@@ -150,3 +150,18 @@ def test_adding_a_column_to_an_old_database(tmp_path):
             assert c.execute(sa.text("SELECT pos_terminal FROM drivers")).scalar() == ""
     finally:
         database.engine = saved
+
+
+def test_terminals_wait_until_the_days_pos_orders_are_imported(client):
+    d = "2026-03-03"
+    driver = did(client, "D-104")
+    client.put("/api/collections", json={"business_date": d, "driver_id": driver, "expected_cash": 0, "cash_received": 0, "pos_amount": 500})
+    day = client.get("/api/pos", params={"date": d}).json()
+    row = next(r for r in day["rows"] if r["driver_id"] == driver)
+    assert row["status"] == "awaiting_orders" and not row["open"]
+    assert day["totals"]["differences"] == 0 and day["totals"]["awaiting"] == 1 and day["totals"]["difference"] == 0
+    assert client.get("/api/dashboard", params={"date": d}).json()["figures"]["pos_awaiting"] == 1
+    client.post("/api/pos/import/orders", files=upload("o.csv", "Order no,Driver ID,Amount\nWAIT-1,D-104,450\n"),
+                data={"business_date": d, "commit": "true"})
+    row = next(r for r in client.get("/api/pos", params={"date": d}).json()["rows"] if r["driver_id"] == driver)
+    assert row["status"] == "terminal_over" and row["difference"] == 50.0 and row["open"]

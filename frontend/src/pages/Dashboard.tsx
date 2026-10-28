@@ -101,9 +101,9 @@ export default function Dashboard() {
             </Link>
             <Link to="/pos" className="group p-5 hover:bg-paper/50">
               <dt className="text-sm text-ink-soft">POS differences</dt>
-              <dd className={`mt-1 text-[22px] font-semibold ${f.pos_open ? "text-short" : "text-leaf-dark"}`}>
-                {f.pos_differences ? <Money value={f.pos_difference} tone={f.pos_open ? "short" : "muted"} /> : f.drivers ? "None" : "-"}</dd>
-              <dd className="mt-1 text-xs text-ink-faint">{f.pos_differences ? `${f.pos_open} of ${f.pos_differences} not yet explained` : "Every terminal agrees"}</dd>
+              <dd className={`mt-1 text-[22px] font-semibold ${f.pos_open ? "text-short" : f.pos_awaiting && !f.pos_differences ? "text-brass-dark" : "text-leaf-dark"}`}>
+                {f.pos_differences ? <Money value={f.pos_difference} tone={f.pos_open ? "short" : "muted"} /> : f.pos_awaiting ? "Waiting" : f.drivers ? "None" : "-"}</dd>
+              <dd className="mt-1 text-xs text-ink-faint">{f.pos_differences ? `${f.pos_open} of ${f.pos_differences} not yet explained` : f.pos_awaiting ? "Import the system’s POS orders" : "Every terminal agrees"}</dd>
             </Link>
           </dl>
 

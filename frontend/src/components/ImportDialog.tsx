@@ -20,9 +20,9 @@ export const money = (key: string): ((r: PreviewRow) => ReactNode) => (r) =>
   r[key] == null ? <span className="text-ink-faint">-</span> : <Money value={r[key] as number} />;
 
 /** Two steps: check the file (nothing is saved), then save the good rows. */
-export default function ImportDialog({ title, intro, endpoint, templateUrl, columns, noun, day, onClose, onSaved }: {
+export default function ImportDialog({ title, intro, endpoint, templateUrl, columns, noun, day, noDate = false, onClose, onSaved }: {
   title: string; intro: ReactNode; endpoint: string; templateUrl: string; columns: PreviewColumn[];
-  noun: [string, string]; day: string; onClose: () => void; onSaved: (dates: string[]) => void;
+  noun: [string, string]; day: string; noDate?: boolean; onClose: () => void; onSaved: (dates: string[]) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [date, setDate] = useState(day);
@@ -36,7 +36,7 @@ export default function ImportDialog({ title, intro, endpoint, templateUrl, colu
     setBusy(true); setError(null);
     const form = new FormData();
     form.append("file", file);
-    form.append("business_date", date);
+    if (!noDate) form.append("business_date", date);
     form.append("commit", String(commit));
     try {
       const res = await upload<ImportResult>(endpoint, form);
@@ -61,8 +61,10 @@ export default function ImportDialog({ title, intro, endpoint, templateUrl, colu
             <span className="font-medium text-ink">{file ? file.name : "Choose a .csv or .xlsx file"}</span>
             <input type="file" accept=".csv,.xlsx" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
-          <label className="block text-sm font-medium">Business date for rows without a date
-            <input type="date" className="field" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          {!noDate && (
+            <label className="block text-sm font-medium">Business date for rows without a date
+              <input type="date" className="field" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          )}
           <a href={templateUrl} className="inline-flex items-center gap-1.5 text-sm font-medium text-leaf-dark hover:underline">
             <Icon name="download" className="h-4 w-4" />Download the template</a>
           <FormError message={error} />
@@ -94,7 +96,7 @@ export default function ImportDialog({ title, intro, endpoint, templateUrl, colu
                 <tr>
                   <th className="px-3 py-2 font-medium">Row</th>
                   {columns.map((c) => <th key={c.label} className={`px-3 py-2 font-medium ${c.right ? "text-right" : ""}`}>{c.label}</th>)}
-                  <th className="px-3 py-2 font-medium">Date</th>
+                  {!noDate && <th className="px-3 py-2 font-medium">Date</th>}
                   <th className="px-3 py-2 font-medium">Result</th>
                 </tr>
               </thead>
@@ -103,7 +105,7 @@ export default function ImportDialog({ title, intro, endpoint, templateUrl, colu
                   <tr key={r.line} className="border-t border-paper-line align-top">
                     <td className="num px-3 py-2 text-ink-faint">{r.line}</td>
                     {columns.map((c) => <td key={c.label} className={`px-3 py-2 ${c.right ? "text-right" : ""}`}>{c.cell(r)}</td>)}
-                    <td className="whitespace-nowrap px-3 py-2 text-ink-soft">{r.date ? fmtDay(r.date) : "-"}</td>
+                    {!noDate && <td className="whitespace-nowrap px-3 py-2 text-ink-soft">{r.date ? fmtDay(r.date) : "-"}</td>}
                     <td className="px-3 py-2">
                       <Badge tone={LABEL[r.status].tone}>{LABEL[r.status].text}</Badge>
                       {r.problems.length > 0 && <p className={`mt-1 max-w-[16rem] text-xs ${r.status === "error" ? "text-short-dark" : "text-ink-faint"}`}>{r.problems.join("; ")}</p>}

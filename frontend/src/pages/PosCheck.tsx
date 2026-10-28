@@ -26,6 +26,7 @@ const TERMINAL_PREVIEW = [
 function StatusCell({ r }: { r: PosRow }) {
   if (r.status === "agrees") return <Badge tone="leaf">Agrees</Badge>;
   if (r.status === "no_terminal") return <Badge tone="muted">No terminal total</Badge>;
+  if (r.status === "awaiting_orders") return <Badge tone="muted">Waiting for system orders</Badge>;
   const rv = r.review;
   return (
     <span className="flex flex-wrap items-center gap-1.5">
@@ -96,6 +97,7 @@ function ReviewBox({ day, r, onChanged }: { day: string; r: PosRow; onChanged: (
   }
 
   if (r.status === "agrees") return <p className="text-sm text-leaf-dark">The terminal total agrees with the system to the halala. Nothing to review.</p>;
+  if (r.status === "awaiting_orders") return <p className="text-sm text-ink-soft">The terminal total is recorded, but the system’s POS orders for this day are not imported yet, so there is nothing to compare it with. Import the system orders for this day.</p>;
   if (r.status === "no_terminal") return <p className="text-sm text-ink-soft">This driver has POS orders but no handover yet, so there is no terminal total. Record his handover on the Collections page, or import the terminal sheet.</p>;
   const rv = r.review;
   return (
@@ -148,7 +150,7 @@ export default function PosCheck() {
           {!data.orders_imported && data.rows.length > 0 && (
             <div className="mb-6 flex flex-wrap items-center gap-3 rounded-panel border border-brass/30 bg-brass-soft px-5 py-3 text-sm text-brass-dark">
               <Icon name="alert" className="h-5 w-5" />
-              <span className="flex-1">The system's POS orders for {fmtDay(day)} are not imported yet, so every terminal total shows as over.</span>
+              <span className="flex-1">The system's POS orders for {fmtDay(day)} are not imported yet, so the terminal totals cannot be checked.</span>
               <button onClick={() => setImporting("orders")} className="btn-primary">Import system orders</button>
             </div>
           )}
@@ -162,7 +164,7 @@ export default function PosCheck() {
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Terminal totals</dt>
               <dd className="mt-1 text-[22px] font-semibold"><Money value={t.terminal_total} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
-              <dd className="mt-1 text-xs text-ink-faint">{t.no_terminal ? `${t.no_terminal} without a terminal total` : `${t.drivers} drivers`}</dd>
+              <dd className="mt-1 text-xs text-ink-faint">{t.awaiting ? `${t.awaiting} waiting for system orders` : t.no_terminal ? `${t.no_terminal} without a terminal total` : `${t.drivers} drivers`}</dd>
             </div>
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Difference</dt>
@@ -170,7 +172,7 @@ export default function PosCheck() {
                 {t.differences ? <Money value={t.difference} tone={t.short ? "short" : "brass"} /> : <Money value={0} tone="leaf" />}
               </dd>
               <dd className="mt-1 text-xs text-ink-faint">
-                {t.differences ? [t.short && `terminals short ${fmtMoney(t.short)}`, t.over && `over ${fmtMoney(t.over)}`].filter(Boolean).join(", ") : t.drivers ? "Every terminal agrees" : "Nothing recorded"}
+                {t.differences ? [t.short && `terminals short ${fmtMoney(t.short)}`, t.over && `over ${fmtMoney(t.over)}`].filter(Boolean).join(", ") : t.awaiting ? "Not checked yet" : t.drivers ? "Every terminal agrees" : "Nothing recorded"}
               </dd>
             </div>
             <div className="p-5">

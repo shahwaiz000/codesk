@@ -26,7 +26,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 ![Collections](docs/screenshots/collections.png)
 
-**POS check.** For each driver, the orders the system shows as closed by POS against his terminal's total for the day. Click a driver to see his POS orders. If one order is exactly the size of the difference it is highlighted, because that is usually the order closed as POS but paid in cash. Each difference is marked *explained* (a reason is required) or *needs follow-up*. If the numbers change after a review, the review shows as out of date and the difference is open again.
+**POS check.** For each driver, the orders the system shows as closed by POS against his terminal's total for the day. Until the system's POS orders for a day are imported, terminal totals show as waiting rather than as differences. Click a driver to see his POS orders. If one order is exactly the size of the difference it is highlighted, because that is usually the order closed as POS but paid in cash. Each difference is marked *explained* (a reason is required) or *needs follow-up*. If the numbers change after a review, the review shows as out of date and the difference is open again.
 
 ![POS check](docs/screenshots/pos-check.png)
 
@@ -42,9 +42,9 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 ![Reports](docs/screenshots/reports.png)
 
-**Imports with a check first.** Handovers, the system's POS orders and the terminal sheet can be imported from CSV or Excel. Nothing is saved until you have seen the check: unknown or inactive drivers, unreadable amounts, a driver or order twice, a terminal nobody has. Rows already saved are skipped and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID", "TID"...), amounts like "SAR 1,234.50" or "(500.00)" are understood, dates are read day-first (26/10/2026), and cash orders in a POS export are skipped.
+**Imports with a check first.** The driver list, handovers, the system's POS orders and the terminal sheet can be imported from CSV or Excel. Nothing is saved until you have seen the check: unknown or inactive drivers, unreadable amounts, a driver or order twice, a terminal nobody has. Rows already saved are skipped and changed ones are updated. Column names are flexible ("Cash Collected", "System Cash", "Courier ID", "TID"...), amounts like "SAR 1,234.50" or "(500.00)" are understood, dates are read day-first (26/10/2026), and cash orders in a POS export are skipped.
 
-**Drivers.** Driver IDs, hubs and POS terminal IDs (one terminal per active driver). Each handover keeps the terminal used that day, so moving a machine to another driver does not change old days. A driver with records cannot be deleted, only made inactive.
+**Drivers.** Driver IDs, hubs and POS terminal IDs (one terminal per active driver), added one by one or imported from a CSV or Excel list (existing drivers are updated, never doubled, and an empty cell never wipes a saved value). Each handover keeps the terminal used that day, so moving a machine to another driver does not change old days. A driver with records cannot be deleted, only made inactive.
 
 **Activity log and login.** Every change is saved with who made it, when, and the old and new amounts. Log entries cannot be edited or deleted, which is also blocked in the database layer. One owner account, scrypt password hashing, an HttpOnly session cookie, lockout after five wrong passwords, and changes from unknown websites are refused.
 
@@ -55,7 +55,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 71 backend tests (pytest) and 11 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 77 backend tests (pytest) and 13 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 

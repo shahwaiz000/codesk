@@ -78,3 +78,12 @@ def read_date(value) -> date | None:
     else:
         parsed = pd.to_datetime(text, dayfirst=True, errors="coerce")  # 26/10/2026 is the local way
     return None if pd.isna(parsed) else parsed.date()
+
+
+def clean_code(value) -> str:
+    """A driver ID, order number or terminal ID as typed in a file: spaces trimmed, capitals,
+    and the ".0" Excel adds to whole numbers removed (123456.0 -> 123456)."""
+    text = " ".join(str(value if value is not None else "").split()).upper()
+    if re.fullmatch(r"\d+\.0+", text):
+        text = text.split(".")[0]
+    return text

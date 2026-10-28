@@ -14,7 +14,7 @@ const DAY: PosDay = {
       terminal_total: 1180, difference: -320, status: "terminal_short", status_text: "Terminal short", review: null, open: true },
   ],
   totals: { system_total: 2400, terminal_total: 2080, difference: -320, order_count: 7, drivers: 2, agrees: 1, differences: 1,
-    no_terminal: 0, open: 1, explained: 0, short: 320, over: 0 },
+    no_terminal: 0, awaiting: 0, open: 1, explained: 0, short: 320, over: 0 },
 };
 const ORDERS = [{ order_no: "ORD1", amount: 700 }, { order_no: "ORD2", amount: 480 }, { order_no: "ORD3", amount: 320 }];
 

@@ -28,7 +28,7 @@ export interface CollectionDay {
   missing: { id: number; code: string; name: string; hub: string }[];
 }
 
-export type PosStatus = "agrees" | "terminal_short" | "terminal_over" | "no_terminal";
+export type PosStatus = "agrees" | "terminal_short" | "terminal_over" | "no_terminal" | "awaiting_orders";
 export interface PosReview { status: "explained" | "follow_up"; note: string; by: string; at: string; stale: boolean }
 export interface PosRow {
   driver_id: number; driver_code: string; driver_name: string; terminal: string | null;
@@ -37,7 +37,7 @@ export interface PosRow {
 }
 export interface PosTotals {
   system_total: number; terminal_total: number; difference: number; order_count: number; drivers: number;
-  agrees: number; differences: number; no_terminal: number; open: number; explained: number; short: number; over: number;
+  agrees: number; differences: number; no_terminal: number; awaiting: number; open: number; explained: number; short: number; over: number;
 }
 export interface PosDay { date: string; rows: PosRow[]; totals: PosTotals; orders_imported: boolean }
 
@@ -66,7 +66,7 @@ export interface DepositLedger {
 
 export interface DashFigures {
   cash_received: number; expected_cash: number; cash_short: number; cash_over: number; short_count: number; over_count: number;
-  pos_terminal: number; pos_system: number; pos_difference: number; pos_open: number; pos_differences: number;
+  pos_terminal: number; pos_system: number; pos_difference: number; pos_open: number; pos_differences: number; pos_awaiting?: number;
   total_collected: number; orders: number; drivers: number; expenses: number; advances: number;
   paid_out: number; returned: number; to_deposit: number; deposited: number; pending: number;
   deposit_status: DepositStatus; deposit_status_text: string; due_on: string | null;

@@ -37,7 +37,7 @@ def day_figures(db: Session, day: date, deposit_rows: dict) -> dict:
         "cash_received": c["cash_received"], "expected_cash": c["expected_cash"],
         "cash_short": c["short"], "cash_over": c["over"], "short_count": c["short_count"], "over_count": c["over_count"],
         "pos_terminal": c["pos_amount"], "pos_system": p["system_total"], "pos_difference": p["difference"],
-        "pos_open": p["open"], "pos_differences": p["differences"],
+        "pos_open": p["open"], "pos_differences": p["differences"], "pos_awaiting": p["awaiting"],
         "total_collected": c["total"], "orders": c["orders"], "drivers": c["drivers"],
         "expenses": to_sar(int(spent.get(False) or 0)), "advances": to_sar(int(spent.get(True) or 0)),
         "paid_out": d["paid_out"] if d else 0.0, "returned": d["returned"] if d else 0.0,

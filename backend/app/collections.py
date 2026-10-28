@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from . import audit
 from .database import get_db
 from .deps import current_user, not_future, parse_day
-from .files import FileProblem, find_column, read_date, read_upload
+from .files import FileProblem, clean_code, find_column, read_date, read_upload
 from .models import Collection, Driver
 from .money import to_halalas, to_sar
 
@@ -190,7 +190,7 @@ def _check_rows(db: Session, df, default_day: date | None) -> tuple[list[dict], 
     out = []
     for i, r in df.iterrows():
         line = i + 2  # row 1 is the header
-        code = " ".join(str(r[cols["driver"]]).split()).upper()
+        code = clean_code(r[cols["driver"]])
         problems = []
         day = read_date(r[cols["date"]]) if cols["date"] and str(r[cols["date"]]).strip() else default_day
         if day is None:

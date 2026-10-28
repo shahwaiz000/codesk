@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Icon } from "../components/icons";
+import ImportDialog, { PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, send, useApi } from "../lib";
 import type { Driver } from "../types";
@@ -54,12 +55,20 @@ function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null;
   );
 }
 
+const DRIVER_PREVIEW = [
+  { label: "Driver ID", cell: (r: PreviewRow) => <span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> },
+  { label: "Name", cell: (r: PreviewRow) => <>{r.driver_name as string}{r.inactive ? <span className="ml-1.5 text-xs text-ink-faint">(inactive)</span> : null}</> },
+  { label: "Hub", cell: (r: PreviewRow) => <span className="text-ink-soft">{(r.hub as string) || "-"}</span> },
+  { label: "POS terminal", cell: (r: PreviewRow) => <span className="num text-ink-soft">{(r.terminal as string) ?? "-"}</span> },
+];
+
 export default function Drivers() {
   const { data, error, loading, reload } = useApi<Driver[]>("/drivers");
   const [query, setQuery] = useState("");
   const [hub, setHub] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Driver | "new" | null>(null);
+  const [importing, setImporting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const hubs = useMemo(() => [...new Set((data ?? []).map((d) => d.hub).filter(Boolean))].sort(), [data]);
@@ -86,6 +95,7 @@ export default function Drivers() {
   return (
     <>
       <PageHeader title="Drivers" subtitle="The driver IDs every collection, POS check and expense is matched against. Shortages and open advances cover all recorded days.">
+        <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import drivers</button>
         <button onClick={() => setEditing("new")} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Add driver</button>
       </PageHeader>
 
@@ -125,7 +135,12 @@ export default function Drivers() {
             {actionError && <div className="px-5 pt-4"><FormError message={actionError} /></div>}
             {rows.length === 0 ? (
               data.length === 0
-                ? <Empty title="No drivers yet" hint="Add your drivers with the same IDs your delivery system uses, so imports match them automatically."><button onClick={() => setEditing("new")} className="btn-primary">Add driver</button></Empty>
+                ? <Empty title="No drivers yet" hint="Import your driver list, or add drivers one by one, with the same IDs your delivery system uses so other imports match them.">
+                    <div className="flex justify-center gap-2">
+                      <button onClick={() => setImporting(true)} className="btn-quiet">Import drivers</button>
+                      <button onClick={() => setEditing("new")} className="btn-primary">Add driver</button>
+                    </div>
+                  </Empty>
                 : <Empty title="No driver matches" hint="Try another search, choose all hubs, or show inactive drivers." />
             ) : (
               <div className="relative overflow-x-auto">
@@ -180,6 +195,12 @@ export default function Drivers() {
         </>
       )}
 
+      {importing && (
+        <ImportDialog day="" noDate title="Import drivers" endpoint="/drivers/import" templateUrl="/api/drivers/template"
+          noun={["driver", "drivers"]} columns={DRIVER_PREVIEW}
+          intro="Upload your driver list as CSV or Excel. Each row needs the driver ID and name; hub, mobile and POS terminal ID are optional. Drivers already saved are updated, never doubled, and an empty cell never wipes a saved value."
+          onClose={() => setImporting(false)} onSaved={() => { setImporting(false); reload(); }} />
+      )}
       {editing && (
         <DriverForm driver={editing === "new" ? null : editing} hubs={hubs}
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />

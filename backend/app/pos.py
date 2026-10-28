@@ -17,19 +17,21 @@ from . import audit
 from .collections import COLUMNS as HANDOVER_COLUMNS, MAX_AMOUNT
 from .database import get_db
 from .deps import current_user, not_future, parse_day
-from .files import FileProblem, find_column, read_date, read_upload
+from .files import FileProblem, clean_code, find_column, read_date, read_upload
 from .models import Collection, Driver, PosOrder, PosReview, utcnow, iso
 from .money import to_halalas, to_sar
 
 router = APIRouter(prefix="/api/pos", tags=["pos"])
 
 STATUS_TEXT = {"agrees": "Agrees", "terminal_short": "Terminal short", "terminal_over": "Terminal over",
-               "no_terminal": "No terminal total"}
+               "no_terminal": "No terminal total", "awaiting_orders": "Waiting for system orders"}
 
 
-def _status(system: int, terminal: int | None) -> str:
+def _status(system: int, terminal: int | None, orders_loaded: bool = True) -> str:
     if terminal is None:
         return "no_terminal"
+    if not orders_loaded and terminal:
+        return "awaiting_orders"  # the day's POS orders are not imported yet: not a difference, just not checked
     return "agrees" if terminal == system else "terminal_short" if terminal < system else "terminal_over"
 
 
@@ -38,6 +40,7 @@ def day_rows(db: Session, day: date) -> list[dict]:
     for driver_id, total, n in (db.query(PosOrder.driver_id, func.sum(PosOrder.amount), func.count(PosOrder.id))
                                 .filter(PosOrder.business_date == day).group_by(PosOrder.driver_id)):
         orders[driver_id] = [int(total), n]
+    orders_loaded = bool(orders)
     handovers = {c.driver_id: c for c in db.query(Collection).filter_by(business_date=day)}
     reviews = {r.driver_id: r for r in db.query(PosReview).filter_by(business_date=day)}
     ids = set(orders) | set(handovers)
@@ -47,7 +50,7 @@ def day_rows(db: Session, day: date) -> list[dict]:
         d, h = drivers[did], handovers.get(did)
         system, count = orders[did]
         terminal = h.pos_amount if h else None
-        status = _status(system, terminal)
+        status = _status(system, terminal, orders_loaded)
         r = reviews.get(did)
         review = None
         if r and status in ("terminal_short", "terminal_over"):
@@ -66,10 +69,11 @@ def summarize(rows: list[dict]) -> dict:
     diffs = [r for r in rows if r["status"] in ("terminal_short", "terminal_over")]
     return {"system_total": round(sum(r["system_total"] for r in rows), 2),
             "terminal_total": round(sum(r["terminal_total"] or 0 for r in rows), 2),
-            "difference": round(sum(r["difference"] or 0 for r in rows), 2),
+            "difference": round(sum(r["difference"] or 0 for r in diffs), 2),
             "order_count": sum(r["order_count"] for r in rows), "drivers": len(rows),
             "agrees": sum(r["status"] == "agrees" for r in rows), "differences": len(diffs),
             "no_terminal": sum(r["status"] == "no_terminal" for r in rows),
+            "awaiting": sum(r["status"] == "awaiting_orders" for r in rows),
             "open": sum(r["open"] for r in rows),
             "explained": sum(1 for r in diffs if r["review"] and not r["review"]["stale"] and r["review"]["status"] == "explained"),
             "short": round(-sum(r["difference"] for r in diffs if r["difference"] < 0), 2),
@@ -199,7 +203,7 @@ def _check_orders(db: Session, df, default_day: date | None):
     if not cols["date"] and not default_day:
         raise FileProblem("The file has no Date column, so choose the business date first")
     drivers = {d.code.upper(): d for d in db.query(Driver)}
-    nos = [" ".join(str(v).split()).upper() for v in df[cols["order"]]]
+    nos = [clean_code(v) for v in df[cols["order"]]]
     existing = {o.order_no: o for o in db.query(PosOrder).filter(PosOrder.order_no.in_([n for n in nos if n]))} if nos else {}
     seen: dict[str, int] = {}
     out = []
@@ -212,7 +216,7 @@ def _check_orders(db: Session, df, default_day: date | None):
             out.append({**base, "status": "skipped", "problems": [f"paid by {method}, not POS"], "driver_code": None,
                         "driver_name": "", "date": None, "amount": None})
             continue
-        code = " ".join(str(r[cols["driver"]]).split()).upper()
+        code = clean_code(r[cols["driver"]])
         day = _row_day(r, cols["date"], default_day, problems)
         drv = drivers.get(code)
         if not no:
@@ -270,9 +274,7 @@ def _check_terminals(db: Session, df, default_day: date | None):
     out = []
     for i, r in df.iterrows():
         line, problems = i + 2, []
-        terminal = "".join(str(r[cols["terminal"]]).split()).upper()
-        if terminal.endswith(".0") and terminal[:-2].isdigit():
-            terminal = terminal[:-2]  # Excel stores 60311101 as 60311101.0 in some files
+        terminal = clean_code(r[cols["terminal"]]).replace(" ", "")
         day = _row_day(r, cols["date"], default_day, problems)
         amount = _amount(r[cols["amount"]], problems, "total amount")
         handover = drv = None
