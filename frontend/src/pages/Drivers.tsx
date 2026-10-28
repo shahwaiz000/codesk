@@ -161,7 +161,7 @@ export default function Drivers() {
                       <tr key={d.id} className={`border-b border-paper-line last:border-0 hover:bg-paper/60 ${d.active ? "" : "text-ink-faint"}`}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
-                            <span className="num w-14 shrink-0 font-semibold text-ink-soft">{d.code}</span>
+                            <span className="num shrink-0 whitespace-nowrap font-semibold text-ink-soft">{d.code}</span>
                             <span className="min-w-0">
                               <span className={`block truncate font-medium ${d.active ? "text-ink" : ""}`}>{d.name}</span>
                               {d.phone && <span className="num block text-xs text-ink-faint">{d.phone}</span>}
