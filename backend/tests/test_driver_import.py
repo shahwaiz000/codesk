@@ -27,9 +27,9 @@ def test_preview_flags_problems_and_saves_nothing(client):
     r = client.post("/api/drivers/import", files=up("drivers.csv", text))
     assert r.status_code == 200, r.text
     out = r.json()
-    assert out["counts"] == {"new": 2, "update": 0, "same": 0, "error": 5} and out["saved"] == 0
+    assert out["counts"] == {"new": 2, "update": 0, "same": 0, "skipped": 0, "error": 5} and out["saved"] == 0
     p = {x["line"]: " | ".join(x["problems"]) for x in out["rows"]}
-    assert "repeated, first on row 2" in p[4] and "letters, numbers and dashes" in p[5] and "no driver name" in p[6]
+    assert "repeated with different details, first on row 2" in p[4] and "letters, numbers and dashes" in p[5] and "no driver name" in p[6]
     assert "already belongs to D-101" in p[7] and "terminal 71010001 repeated" in p[8]
     assert out["rows"][0]["terminal"] == "71010001" and out["rows"][1]["driver_code"] == "E-502"
     assert not [d for d in client.get("/api/drivers").json() if d["code"].startswith("E-5")]
@@ -41,7 +41,7 @@ def test_commit_adds_then_updates_without_wiping(client):
     assert r["saved"] == 2
     again = "Driver ID,Driver name,Hub,POS terminal ID\nE-601,Real Test One,,71020001\nE-602,Real Test Two,Hub B,\n"
     r = client.post("/api/drivers/import", files=up("d2.csv", again)).json()
-    assert r["counts"] == {"new": 0, "update": 1, "same": 1, "error": 0}  # an empty hub does not wipe "Hub A"
+    assert r["counts"] == {"new": 0, "update": 1, "same": 1, "skipped": 0, "error": 0}  # an empty hub does not wipe "Hub A"
     client.post("/api/drivers/import", files=up("d2.csv", again), data={"commit": "true"})
     rows = {d["code"]: d for d in client.get("/api/drivers").json()}
     assert rows["E-601"]["hub"] == "Hub A" and rows["E-601"]["pos_terminal"] == "71020001" and rows["E-602"]["hub"] == "Hub B"

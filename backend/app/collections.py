@@ -158,9 +158,10 @@ def delete(cid: int, db: Session = Depends(get_db), user: str = Depends(current_
 # ---------------------------------------------------------------- import
 
 COLUMNS = {
-    "driver": ("driverid", "drivercode", "driverno", "courierid", "couriercode", "employeeid", "empid", "driver", "courier", "id"),
-    "name": ("drivername", "couriername", "name"),
-    "date": ("businessdate", "date", "day", "collectiondate"),
+    "driver": ("driverid", "drivercode", "driverno", "courierid", "couriercode", "dacode", "daid", "deliveryagentcode",
+               "deliveryagentid", "employeeid", "empid", "driver", "courier", "id"),
+    "name": ("drivername", "couriername", "daname", "deliveryagentname", "name"),
+    "date": ("businessdate", "date", "day", "collectiondate", "collectionoperationtime", "collectiontime"),
     "orders": ("orders", "ordercount", "codorders", "deliveredorders", "delivered", "noofswaybills", "waybills"),
     "expected": ("expectedcash", "systemcash", "codcash", "cashexpected", "expected", "cashsystem", "expectedcod"),
     "received": ("cashreceived", "receivedcash", "cashcollected", "cashhandedover", "actualcash", "cash", "received"),

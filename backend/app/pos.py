@@ -149,9 +149,13 @@ ORDER_COLUMNS = {
     "order": ("orderno", "ordernumber", "orderid", "waybill", "waybillno", "waybillnumber", "awb", "awbno",
               "trackingno", "trackingnumber", "shipmentno", "order"),
     "driver": HANDOVER_COLUMNS["driver"],
-    "amount": ("amount", "codamount", "posamount", "orderamount", "value", "collectedamount", "total"),
+    "amount": ("actualreceivedamount", "receivedamount", "amount", "codamount", "posamount", "orderamount", "value",
+               "collectedamount", "netcashcollectedamount", "total"),
     "date": HANDOVER_COLUMNS["date"] + ("closedate", "closeddate", "deliverydate", "delivereddate"),
-    "method": ("paymentmethod", "paymenttype", "payment", "paymentmode", "method", "paidby", "collectiontype"),
+    # how the money was actually collected comes before what the customer chose when ordering
+    "method": ("collectmethod", "collectionmethod", "collectiontype", "paymentmethod", "paymenttype", "payment",
+               "paymentmode", "method", "paidby"),
+    "charge": ("chargecategory", "chargetype", "charge", "feetype"),
 }
 TERMINAL_COLUMNS = {
     "terminal": ("terminalid", "terminalno", "terminalnumber", "terminal", "tid", "posterminal", "posid", "posterminalid"),
@@ -159,6 +163,17 @@ TERMINAL_COLUMNS = {
     "date": HANDOVER_COLUMNS["date"] + ("settlementdate", "transactiondate"),
 }
 POS_WORDS = ("pos", "card", "mada", "visa", "master", "network", "span", "credit", "debit")
+SPLIT_WORDS = ("part", "mixed", "split")  # e.g. "part pos and part cash": the file does not say how much was POS
+
+
+def is_pos(method: str) -> bool:
+    m = method.lower()
+    return any(w in m for w in POS_WORDS)
+
+
+def is_split(method: str) -> bool:
+    m = method.lower()
+    return any(w in m for w in SPLIT_WORDS) and is_pos(m) and ("cash" in m or "case" in m)
 TEMPLATES = {
     "orders": "Order no,Driver ID,Amount,Payment method,Date\nORD7400001,D-101,185.50,POS,2026-10-26\n",
     "terminals": "Terminal ID,Total amount,Date\n60311101,1320.50,2026-10-26\n",
@@ -202,18 +217,31 @@ def _check_orders(db: Session, df, default_day: date | None):
         raise FileProblem(f"The file needs these columns: {', '.join(missing)}. Download the template to see the layout")
     if not cols["date"] and not default_day:
         raise FileProblem("The file has no Date column, so choose the business date first")
+    pay_col = find_column(df, ("paymentmethod", "paymenttype", "paymentmode"))  # tells which part a split line is
+    if pay_col == cols["method"]:
+        pay_col = None
     drivers = {d.code.upper(): d for d in db.query(Driver)}
     nos = [clean_code(v) for v in df[cols["order"]]]
     existing = {o.order_no: o for o in db.query(PosOrder).filter(PosOrder.order_no.in_([n for n in nos if n]))} if nos else {}
-    seen: dict[str, int] = {}
+    seen: dict[tuple, int] = {}
     out = []
     for i, r in df.iterrows():
         line, problems = i + 2, []
         no = nos[i]
         method = str(r[cols["method"]]).strip() if cols["method"] else ""
+        charge = " ".join(str(r[cols["charge"]]).split()) if cols["charge"] else ""
         base = {"line": line, "order_no": no or None, "method": method}
-        if method and not any(w in method.lower() for w in POS_WORDS):
-            out.append({**base, "status": "skipped", "problems": [f"paid by {method}, not POS"], "driver_code": None,
+        note = None
+        if method and is_split(method):
+            # a split payment comes as one line per part; this line's payment method says which part it is
+            part = str(r[pay_col]).strip() if pay_col else ""
+            if part and not is_split(part):
+                note = f"part payment, this line was {part}"
+                method = part
+            else:
+                problems.append(f"collected as '{method}': the file does not say how much of it was POS")
+        if method and not is_pos(method) and not problems:
+            out.append({**base, "status": "skipped", "problems": [note or f"collected by {method}, not POS"], "driver_code": None,
                         "driver_name": "", "date": None, "amount": None})
             continue
         code = clean_code(r[cols["driver"]])
@@ -221,35 +249,60 @@ def _check_orders(db: Session, df, default_day: date | None):
         drv = drivers.get(code)
         if not no:
             problems.append("no order number")
-        elif no in seen:
-            problems.append(f"order repeated, first on row {seen[no]}")
+        elif (no, charge) in seen:  # the same order twice is fine for different charges (COD and VAT), not for the same one
+            problems.append(f"order repeated, first on row {seen[(no, charge)]}")
         else:
-            seen[no] = line
+            seen[(no, charge)] = line
         if not code:
             problems.append("no driver ID")
         elif not drv:
             problems.append(f"unknown driver {code}")
         amount = _amount(r[cols["amount"]], problems)
-        status = "error" if problems else "new"
-        if not problems and no in existing:
-            o = existing[no]
-            status = "same" if (o.driver_id, o.business_date, o.amount) == (drv.id, day, amount) else "update"
+        status = "error" if problems else "ok"
+        if note and not problems:
+            problems = [note]  # shown as a note on a good row
         out.append({**base, "status": status, "problems": problems, "driver_code": code or None,
                     "driver_name": drv.name if drv else "", "date": day.isoformat() if day else None,
-                    "amount": to_sar(amount), "_driver": drv, "_day": day, "_amount": amount})
+                    "amount": to_sar(amount), "charge": charge, "_driver": drv, "_day": day, "_amount": amount})
+
+    # one order can have several POS lines (COD and Import VAT): they are added together into one order
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for r in out:
+        if r["status"] == "ok":
+            groups[r["order_no"]].append(r)
+    for no, rows in groups.items():
+        head = rows[0]
+        if len({(x["driver_code"], x["date"]) for x in rows}) > 1:
+            for x in rows:
+                x["status"] = "error"
+                x["problems"].append("the same order has different drivers or dates in this file")
+            continue
+        total = sum(x["_amount"] for x in rows)
+        status = "new"
+        if no in existing:
+            o = existing[no]
+            status = "same" if (o.driver_id, o.business_date, o.amount) == (head["_driver"].id, head["_day"], total) else "update"
+        for x in rows:
+            x["status"], x["_head"] = status, x is head
+        head["_amount"] = total
+        if len(rows) > 1:
+            head["problems"] = head["problems"][:1] if head["problems"] and head["problems"][0].startswith("part payment") else []
+            head["problems"] += [f"order total {to_sar(total):,.2f} with row {', '.join(str(x['line']) for x in rows[1:])}"]
+            for x in rows[1:]:
+                x["problems"] = [f"added to row {head['line']}, same order ({x['charge'] or 'another charge'})"]
     return out
 
 
 def _save_orders(db: Session, rows, user: str, filename: str) -> int:
     saved, per_day = 0, defaultdict(lambda: [0, 0])
     for r in rows:
-        if r["status"] not in ("new", "update"):
-            continue
+        if r["status"] not in ("new", "update") or not r.get("_head", True):
+            continue  # the other lines of an order are already in its head row's total
         o = db.query(PosOrder).filter_by(order_no=r["order_no"]).first()
         if o:
             audit.record(db, user, "updated", "pos_order", o.id,
                          f"Order {o.order_no} changed by import {filename}: {o.driver.code} {o.business_date.isoformat()} "
-                         f"{to_sar(o.amount):,.2f} -> {r['driver_code']} {r['date']} {r['amount']:,.2f}")
+                         f"{to_sar(o.amount):,.2f} -> {r['driver_code']} {r['date']} {to_sar(r['_amount']):,.2f}")
             o.driver_id, o.business_date, o.amount = r["_driver"].id, r["_day"], r["_amount"]
         else:
             db.add(PosOrder(order_no=r["order_no"], driver_id=r["_driver"].id, business_date=r["_day"],

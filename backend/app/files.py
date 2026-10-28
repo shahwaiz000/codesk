@@ -37,7 +37,8 @@ def read_upload(filename: str, data: bytes) -> pd.DataFrame:
                         raise FileProblem("This Excel file is too large when opened")
             except zipfile.BadZipFile:
                 raise FileProblem("This is not a real .xlsx file. Save it again as Excel Workbook (.xlsx)")
-            df = pd.read_excel(io.BytesIO(data), dtype=str, keep_default_na=False, engine="openpyxl")
+            sheets = pd.read_excel(io.BytesIO(data), sheet_name=None, dtype=str, keep_default_na=False, engine="openpyxl")
+            df = pick_data_sheet(sheets)
         elif name.endswith(".csv"):
             text = None
             for enc in ("utf-8-sig", "cp1256", "latin-1"):  # Excel on Arabic Windows often saves CSV as cp1256
@@ -58,6 +59,17 @@ def read_upload(filename: str, data: bytes) -> pd.DataFrame:
     df = df.loc[:, [not str(c).startswith("Unnamed") for c in df.columns]]
     df = df[~(df.astype(str).apply(lambda r: "".join(r).strip(), axis=1) == "")]  # drop fully empty rows
     return df.reset_index(drop=True)
+
+
+def pick_data_sheet(sheets: dict) -> pd.DataFrame:
+    """A workbook can hold a summary or pivot sheet next to the data. Use the sheet whose first row
+    has the most real column names, which is the data (a pivot's first row is usually empty)."""
+    def named(df) -> int:
+        return sum(1 for c in df.columns if str(c).strip() and not str(c).startswith("Unnamed"))
+    frames = list(sheets.values())
+    if not frames:
+        raise FileProblem("The Excel file has no sheets")
+    return max(frames, key=named)  # max keeps the first sheet on a tie
 
 
 def find_column(df: pd.DataFrame, aliases: tuple[str, ...]) -> str | None:

@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/drivers", tags=["drivers"])
 CODE_OK = re.compile(r"^[A-Z0-9][A-Z0-9-]{1,19}$")  # the same rule as adding a driver by hand
 COLUMNS = {
     "driver": HANDOVER_COLUMNS["driver"],
-    "name": ("drivername", "couriername", "fullname", "name", "employeename"),
+    "name": ("drivername", "couriername", "daname", "deliveryagentname", "fullname", "name", "employeename"),
     "hub": ("hub", "station", "branch", "area", "zone", "city"),
     "phone": ("mobile", "mobileno", "mobilenumber", "phone", "phoneno", "phonenumber", "contact"),
     "terminal": TERMINAL_COLUMNS["terminal"],
@@ -63,9 +63,15 @@ def _check(db: Session, df) -> list[dict]:
         elif not CODE_OK.match(code):
             problems.append(f"driver ID '{code}' can only use letters, numbers and dashes")
         elif code in seen_codes:
-            problems.append(f"driver repeated, first on row {seen_codes[code]}")
+            first = seen_codes[code]
+            if (name, terminal) == first[1]:  # an order report lists a driver once per order: that is fine
+                out.append({"line": line, "status": "skipped", "problems": [f"already in this file, row {first[0]}"],
+                            "date": None, "driver_code": code, "driver_name": name, "hub": hub, "phone": phone,
+                            "terminal": terminal or None, "inactive": False, "changes": [], "_values": {}})
+                continue
+            problems.append(f"driver repeated with different details, first on row {first[0]}")
         else:
-            seen_codes[code] = line
+            seen_codes[code] = (line, (name, terminal))
         if len(name) < 2:
             problems.append("no driver name")
         elif len(name) > 80:
@@ -124,6 +130,6 @@ async def import_drivers(file: UploadFile = File(...), commit: bool = Form(False
             audit.record(db, user, "imported", "driver", None,
                          f"Driver import {file.filename}: {added} added, {updated} updated")
         db.commit()
-    counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "error")}
+    counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "skipped", "error")}
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
     return {"file": file.filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved, "dates": []}
