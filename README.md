@@ -55,7 +55,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 77 backend tests (pytest) and 13 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 81 backend tests (pytest) and 13 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 
@@ -101,6 +101,8 @@ npm run dev
 ```
 
 Open http://localhost:5173 and create your owner account. To start again from fresh demo data, stop the backend and delete `backend\codesk.db`. The API documentation is at http://127.0.0.1:8000/docs.
+
+**Forgot the password?** Stop the backend (Ctrl + C), run `python -m app.reset_password` in the backend folder and type a new one. It shows your username, ends all saved logins and writes the reset to the activity log.
 
 ## Technology (all free)
 

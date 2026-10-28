@@ -135,3 +135,15 @@ def test_changes_are_recorded_under_the_logged_in_name(locked_client):
     assert r.status_code == 201 and r.json()["code"] == "D-950"
     top = locked_client.get("/api/audit").json()[0]
     assert top["username"] == "shahwaiz" and "D-950" in top["summary"]
+
+
+def test_forgotten_password_can_be_reset_from_the_command_line(locked_client):
+    from app.reset_password import reset
+    setup(locked_client)
+    with SessionLocal() as db:
+        with pytest.raises(ValueError):
+            reset(db, "short")  # the same password rules as the setup page
+        reset(db, "NewSunrise2026")
+    assert locked_client.get("/api/drivers").status_code == 401  # old logins are ended
+    assert locked_client.post("/api/auth/login", json={"username": "owner", "password": GOOD}).status_code == 401
+    assert locked_client.post("/api/auth/login", json={"username": "owner", "password": "NewSunrise2026"}).status_code == 200
