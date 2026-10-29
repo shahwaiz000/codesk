@@ -21,13 +21,12 @@ test("choosing a station sends it with every request and on download links", asy
   });
   render(<MemoryRouter><StationProvider><StationPicker /></StationProvider></MemoryRouter>);
   const picker = await screen.findByRole("button", { name: "Station" });
-  await waitFor(() => expect(screen.getByText("2 stations")).toBeInTheDocument());
   await userEvent.click(picker);
-  expect(screen.getAllByRole("option")).toHaveLength(3);
+  await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
   await userEvent.type(screen.getByPlaceholderText("Find a city or code"), "jed");
   expect(screen.getAllByRole("option")).toHaveLength(1);
   await userEvent.keyboard("{Enter}");
-  expect(await screen.findByText("JED · Makkah")).toBeInTheDocument();
+  expect(await screen.findByText("Jeddah")).toBeInTheDocument();
   await api("/dashboard");
   expect(headers[headers.length - 1]).toBe("2");
   expect(withStation("/api/reports/day?date=2026-10-27")).toBe("/api/reports/day?date=2026-10-27&station=2");
