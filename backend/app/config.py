@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     currency: str = "SAR"
     watch_enabled: bool = True  # look in the watch folder chosen on the Settings page
     watch_interval: int = 10    # seconds between looks
+    ollama_url: str = "http://localhost:11434"  # the local AI that reads deposit slips (free, runs on this computer)
+    slip_model: str = "qwen3-vl:4b"             # a small vision model that fits a laptop with 8 GB of memory
+    slip_timeout: int = 300                     # seconds: a laptop without a graphics card reads a slip in 1-3 minutes
 
 
 settings = Settings()

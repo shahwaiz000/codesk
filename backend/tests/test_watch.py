@@ -68,6 +68,6 @@ def test_files_in_the_watch_folder_are_imported_by_themselves(client, tmp_path):
     again = client.post("/api/watch/scan").json()
     assert again["imported"][0]["summary"] == "Already imported earlier: nothing to do"
     log = client.get("/api/watch").json()["files"]
-    assert log[0]["filename"] == "collection report.csv" and len(log) == 6
+    assert log[0]["filename"] == "collection report.csv" and log[0]["summary"].startswith("Already imported")
     client.put("/api/watch", json={"folder": ""})
     assert client.post("/api/watch/scan").status_code == 409

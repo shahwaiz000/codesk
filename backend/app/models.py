@@ -122,6 +122,23 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(String(200), default="")
 
 
+class SlipScan(Base):
+    """A deposit slip read by the local AI, waiting for a person to record it (or put it aside)."""
+    __tablename__ = "slip_scans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    filename: Mapped[str] = mapped_column(String(260))
+    status: Mapped[str] = mapped_column(String(10))  # draft | failed | recorded | dismissed
+    fields: Mapped[str] = mapped_column(Text, default="")   # what the AI read, as JSON
+    checks: Mapped[str] = mapped_column(Text, default="")   # CODesk's checks of it, as JSON
+    error: Mapped[str] = mapped_column(String(300), default="")
+    business_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    deposit_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    has_image: Mapped[bool] = mapped_column(Boolean, default=False)
+    deposit_id: Mapped[int | None] = mapped_column(ForeignKey("deposits.id"), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(40), default="")
+
+
 class ImportedFile(Base):
     """A file the watch folder picked up, and what came of it."""
     __tablename__ = "imported_files"

@@ -1,6 +1,7 @@
 import { FormEvent, Fragment, useState } from "react";
 import { todayIso } from "../businessDay";
 import { Icon } from "../components/icons";
+import SlipReader from "../components/SlipReader";
 import { Badge, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
 import type { DepositDay, DepositLedger, DepositStatus, Slip } from "../types";
@@ -145,6 +146,8 @@ export default function Deposits() {
               <dd className="mt-1 text-xs text-ink-faint">{t.late_days ? `${t.late_days} ${t.late_days === 1 ? "day" : "days"} deposited late` : "All on time"}</dd>
             </div>
           </dl>
+
+          <SlipReader days={data.rows} onRecorded={changed} />
 
           <Panel flush title="Day by day"
             action={<label className="flex items-center gap-2 text-sm text-ink-soft">

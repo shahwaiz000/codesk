@@ -9,6 +9,7 @@ buttons, saving only the good rows:
     terminal sheet (POS code + amount)      -> machine totals, matched with drivers
     expense sheet (driver + amount)         -> expenses and advances
     handover list, driver list              -> handovers, drivers
+    PDF or photo                            -> a deposit slip, read by the local AI into a draft deposit
 
 The file then moves to "Imported" (or "Problems" if it could not be read), so it is never imported
 twice, and a line is kept in the watch log. A file still being copied, or open in Excel, waits."""
@@ -22,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from . import audit, collections, driver_import, expense_import, pos
+from . import audit, collections, driver_import, expense_import, pos, slip_reader
 from .config import settings
 from .database import SessionLocal, get_db
 from .deps import current_user
@@ -33,9 +34,9 @@ from .terminals import TERMINAL_COLUMNS
 router = APIRouter(prefix="/api/watch", tags=["watch"])
 
 WHO = "watch folder"
-TYPES = (".csv", ".xlsx")
+TYPES = (".csv", ".xlsx") + slip_reader.TYPES  # a PDF or photo is a deposit slip
 DONE, PROBLEMS = "Imported", "Problems"
-KIND_TEXT = {"report": "Collection report", "orders": "System POS orders", "terminals": "Terminal sheet", "expenses": "Expense sheet",
+KIND_TEXT = {"slip": "Deposit slip", "report": "Collection report", "orders": "System POS orders", "terminals": "Terminal sheet", "expenses": "Expense sheet",
              "handovers": "Handover list", "drivers": "Driver list"}
 
 _lock = threading.Lock()
@@ -80,6 +81,15 @@ def process(db: Session, filename: str, data: bytes) -> tuple[str | None, str, s
     """Import one file. Returns (kind, status, summary): status is done, attention (some rows had
     problems and were left out) or failed (the file could not be used)."""
     kind = None
+    if filename.lower().endswith(slip_reader.TYPES):
+        scan = slip_reader.read_slip(db, filename, data, WHO)
+        if scan.status == "failed":
+            return "slip", "failed", scan.error
+        d = slip_reader.slip_dict(scan)
+        bad = sum(not c["ok"] for c in d["checks"])
+        return "slip", "attention" if bad else "done", (
+            f"read {d['total'] or 0:,.2f}" + (f" for {d['business_date']}" if d["business_date"] else "")
+            + (f", {bad} check(s) to look at" if bad else ", all checks passed") + ": confirm it on Bank deposits")
     try:
         kind = detect(filename, data)
         if not kind:
