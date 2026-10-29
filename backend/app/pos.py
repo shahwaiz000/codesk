@@ -352,15 +352,20 @@ async def import_file(kind: str, file: UploadFile = File(...), business_date: st
         raise HTTPException(404, "Unknown import")
     default_day = not_future(parse_day(business_date, "business_date")) if business_date else None
     try:
-        df = read_upload(file.filename or "", await file.read(1 + 5_000_000), keep_unnamed=kind == "terminals")
-        rows = (_check_orders if kind == "orders" else terminals.check_sheet)(db, df, default_day)
+        return run(db, kind, file.filename or "file", await file.read(1 + 5_000_000), default_day, commit, user)
     except FileProblem as e:
         raise HTTPException(422, str(e))
+
+
+def run(db: Session, kind: str, filename: str, data: bytes, default_day: date | None, commit: bool, user: str) -> dict:
+    """Check (and with commit, save) system POS orders or a terminal sheet. Also used by the watch folder."""
+    df = read_upload(filename, data, keep_unnamed=kind == "terminals")
+    rows = (_check_orders if kind == "orders" else terminals.check_sheet)(db, df, default_day)
     if not rows:
-        raise HTTPException(422, "The file has a header but no rows")
+        raise FileProblem("The file has a header but no rows")
     saved = 0
     if commit:
-        saved = (_save_orders if kind == "orders" else terminals.save_sheet)(db, rows, user, file.filename or "file")
+        saved = (_save_orders if kind == "orders" else terminals.save_sheet)(db, rows, user, filename)
         if kind == "orders":  # new system orders can complete the pairing of that day's machines
             db.flush()
             for d in sorted({r["_day"] for r in rows if r.get("_day")}):
@@ -369,5 +374,5 @@ async def import_file(kind: str, file: UploadFile = File(...), business_date: st
         db.commit()
     counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "skipped", "error")}
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
-    return {"file": file.filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved,
+    return {"file": filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved,
             "dates": sorted({r["date"] for r in clean if r.get("date")})}

@@ -122,6 +122,18 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(String(200), default="")
 
 
+class ImportedFile(Base):
+    """A file the watch folder picked up, and what came of it."""
+    __tablename__ = "imported_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    filename: Mapped[str] = mapped_column(String(260))
+    kind: Mapped[str] = mapped_column(String(20), default="")
+    status: Mapped[str] = mapped_column(String(10))  # done | attention | failed
+    summary: Mapped[str] = mapped_column(String(500), default="")
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+
+
 class TerminalTotal(Base):
     """One POS machine's total for one day, from the terminal sheet. Machines move between drivers,
     so the driver is found each day: by the machine's known owner, by an exact amount match with a

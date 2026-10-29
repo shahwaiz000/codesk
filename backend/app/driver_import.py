@@ -102,12 +102,16 @@ def _check(db: Session, df) -> list[dict]:
 async def import_drivers(file: UploadFile = File(...), commit: bool = Form(False),
                          db: Session = Depends(get_db), user: str = Depends(current_user)):
     try:
-        df = read_upload(file.filename or "", await file.read(1 + 5_000_000))
-        rows = _check(db, df)
+        return run(db, file.filename or "file", await file.read(1 + 5_000_000), commit, user)
     except FileProblem as e:
         raise HTTPException(422, str(e))
+
+
+def run(db: Session, filename: str, data: bytes, commit: bool, user: str) -> dict:
+    """Check (and with commit, save) a driver list. Also used by the watch folder."""
+    rows = _check(db, read_upload(filename, data))
     if not rows:
-        raise HTTPException(422, "The file has a header but no rows")
+        raise FileProblem("The file has a header but no rows")
     saved = 0
     if commit:
         added = updated = 0
@@ -123,13 +127,13 @@ async def import_drivers(file: UploadFile = File(...), commit: bool = Form(False
                 for f in r["changes"]:
                     setattr(d, f, v[f])
                 db.flush()
-                audit.record(db, user, "updated", "driver", d.id, f"{d.code} (import {file.filename}): {before}")
+                audit.record(db, user, "updated", "driver", d.id, f"{d.code} (import {filename}): {before}")
                 updated += 1
         saved = added + updated
         if saved:
             audit.record(db, user, "imported", "driver", None,
-                         f"Driver import {file.filename}: {added} added, {updated} updated")
+                         f"Driver import {filename}: {added} added, {updated} updated")
         db.commit()
     counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "skipped", "error")}
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
-    return {"file": file.filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved, "dates": []}
+    return {"file": filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved, "dates": []}

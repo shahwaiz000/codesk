@@ -154,12 +154,16 @@ async def import_expenses(file: UploadFile = File(...), business_date: str = For
                           db: Session = Depends(get_db), user: str = Depends(current_user)):
     default_day = not_future(parse_day(business_date, "business_date")) if business_date else None
     try:
-        df = read_upload(file.filename or "", await file.read(1 + 5_000_000))
-        rows = _check(db, df, default_day)
+        return run(db, file.filename or "file", await file.read(1 + 5_000_000), default_day, commit, user)
     except FileProblem as e:
         raise HTTPException(422, str(e))
+
+
+def run(db: Session, filename: str, data: bytes, default_day: date | None, commit: bool, user: str) -> dict:
+    """Check (and with commit, save) an expense sheet. Also used by the watch folder."""
+    rows = _check(db, read_upload(filename, data), default_day)
     if not rows:
-        raise HTTPException(422, "The file has a header but no rows")
+        raise FileProblem("The file has a header but no rows")
     saved = 0
     if commit:
         added: dict[str, Driver] = {}
@@ -167,7 +171,7 @@ async def import_expenses(file: UploadFile = File(...), business_date: str = For
             if r["status"] == "update":
                 e = r["_old"]
                 audit.record(db, user, "updated", "expense", e.id, f"{e.driver.code} {to_sar(e.amount):,.2f} on {e.business_date.isoformat()}: "
-                             f"{CATEGORY_TEXT[e.category]} -> {CATEGORY_TEXT[r['category']]} (import {file.filename})")
+                             f"{CATEGORY_TEXT[e.category]} -> {CATEGORY_TEXT[r['category']]} (import {filename})")
                 e.category = r["category"]
                 saved += 1
                 continue
@@ -178,7 +182,7 @@ async def import_expenses(file: UploadFile = File(...), business_date: str = For
                 drv = Driver(code=r["driver_code"], name=r["driver_name"])
                 db.add(drv)
                 db.flush()
-                audit.record(db, user, "created", "driver", drv.id, f"{drv.code} {drv.name} (from expense sheet {file.filename})")
+                audit.record(db, user, "created", "driver", drv.id, f"{drv.code} {drv.name} (from expense sheet {filename})")
                 added[drv.code] = drv
             db.add(Expense(business_date=r["_day"], driver_id=drv.id, category=r["category"], amount=r["_amount"],
                            reference=r["reference"], note=r["note"], created_by=user))
@@ -186,9 +190,9 @@ async def import_expenses(file: UploadFile = File(...), business_date: str = For
         if saved:
             total = sum(r["_amount"] for r in rows if r["status"] in ("new", "update"))
             audit.record(db, user, "imported", "expense", None,
-                         f"Expense sheet {file.filename}: {saved} payments, total {to_sar(total):,.2f}")
+                         f"Expense sheet {filename}: {saved} payments, total {to_sar(total):,.2f}")
         db.commit()
     counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "skipped", "error")}
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
-    return {"file": file.filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved,
+    return {"file": filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved,
             "dates": sorted({r["date"] for r in clean if r["date"]})}

@@ -146,13 +146,13 @@ export default function Dashboard() {
                   {data.alerts.map((a, i) => (
                     <li key={i}>
                       <Link to={a.page} onClick={() => a.kind !== "advance_old" && setDay(a.date)} className="flex items-start gap-3 px-5 py-3 text-sm hover:bg-paper/60">
-                        <Icon name={a.kind.startsWith("deposit") ? "bank" : a.kind === "pos_open" ? "card" : "receipt"}
+                        <Icon name={a.kind.startsWith("deposit") ? "bank" : a.kind.startsWith("pos") ? "card" : a.kind.startsWith("file_") ? "upload" : "receipt"}
                           className={`mt-0.5 h-4 w-4 ${a.kind === "advance_old" ? "text-brass" : "text-short"}`} />
                         <span className="min-w-0 flex-1">
                           <span className="block">{a.text}</span>
                           <span className="text-xs text-ink-faint">{fmtDay(a.date, true)}</span>
                         </span>
-                        <Money value={a.amount} className="font-semibold" />
+                        {!a.kind.startsWith("file_") && <Money value={a.amount} className="font-semibold" />}
                       </Link>
                     </li>
                   ))}

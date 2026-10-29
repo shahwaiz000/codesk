@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals
+from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, watcher
 from .deps import current_user
 from .config import settings
 from .database import Base, SessionLocal, add_missing_columns, engine, get_db
@@ -30,7 +30,10 @@ async def lifespan(app: FastAPI):
     if settings.seed_demo_data:
         with SessionLocal() as db:
             seed_demo(db)
+    stop = watcher.start()
     yield
+    if stop:
+        stop.set()
 
 
 app = FastAPI(title="CODesk API", version="0.1.0", lifespan=lifespan)
@@ -43,6 +46,7 @@ app.include_router(reports.router)
 app.include_router(driver_import.router)
 app.include_router(terminals.router)
 app.include_router(expense_import.router)
+app.include_router(watcher.router)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(","), allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 

@@ -353,21 +353,26 @@ async def import_file(file: UploadFile = File(...), business_date: str = Form(""
     Rows with problems are never saved; the person fixes the file and imports again."""
     default_day = not_future(parse_day(business_date, "business_date")) if business_date else None
     try:
-        df = read_upload(file.filename or "", await file.read(1 + 5_000_000))
-        rows, counts = (_check_report if _is_order_report(df) else _check_rows)(db, df, default_day)
+        return run(db, file.filename or "file", await file.read(1 + 5_000_000), default_day, commit, user)
     except FileProblem as e:
         raise HTTPException(422, str(e))
+
+
+def run(db: Session, filename: str, data: bytes, default_day: date | None, commit: bool, user: str) -> dict:
+    """Check (and with commit, save) handovers from a file. Also used by the watch folder."""
+    df = read_upload(filename, data)
+    rows, counts = (_check_report if _is_order_report(df) else _check_rows)(db, df, default_day)
     if not rows:
-        raise HTTPException(422, "The file has a header but no rows")
+        raise FileProblem("The file has a header but no rows")
     saved = 0
     if commit:
         for r in rows:
             if r["status"] in ("new", "update"):
                 orders, expected, received, pos = r["_h"]
                 save_handover(db, user, r["_day"], r["_driver"], orders, expected, received, pos,
-                              " ".join(r["note"].split()), source=f" (import {file.filename})")
+                              " ".join(r["note"].split()), source=f" (import {filename})")
                 saved += 1
         db.commit()
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
-    return {"file": file.filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved,
+    return {"file": filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved,
             "dates": sorted({r["date"] for r in clean if r["date"]})}

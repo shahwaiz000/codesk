@@ -13,7 +13,7 @@ from .collections import day_totals
 from .database import get_db
 from .deposits import ledger
 from .deps import parse_day
-from .models import Collection, Driver, Expense, PosOrder, TerminalTotal
+from .models import Collection, Driver, Expense, ImportedFile, PosOrder, TerminalTotal
 from .money import to_sar
 from .seed import business_days
 
@@ -99,6 +99,10 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
               .order_by(Expense.business_date)):
         alerts.append({"kind": "advance_old", "date": e.business_date.isoformat(), "amount": to_sar(e.amount), "page": "/expenses",
                        "text": f"Advance to {e.driver.code} open for {(today - e.business_date).days} days"})
+    for f in (db.query(ImportedFile).filter(ImportedFile.status.in_(("failed", "attention")), ImportedFile.at >= since)
+              .order_by(ImportedFile.id.desc()).limit(5)):
+        alerts.append({"kind": f"file_{f.status}", "date": f.at.date().isoformat(), "amount": 0, "page": "/settings",
+                       "text": f"{f.filename}: " + ("could not be imported" if f.status == "failed" else "some rows were left out")})
     alerts.sort(key=lambda a: a["date"], reverse=True)
 
     # last 30 working days ending on the chosen day

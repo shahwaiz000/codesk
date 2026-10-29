@@ -63,6 +63,84 @@ function CashMode() {
   );
 }
 
+type WatchFile = { id: number; at: string; filename: string; kind_text: string; status: "done" | "attention" | "failed"; summary: string };
+type Watch = { folder: string; exists: boolean; running: boolean; interval: number; last_scan: string | null; files: WatchFile[] };
+
+const FILE_TONE = { done: "bg-leaf-soft text-leaf-dark", attention: "bg-brass-soft text-brass-dark", failed: "bg-short-soft text-short-dark" };
+const FILE_TEXT = { done: "Imported", attention: "Imported, some rows left out", failed: "Could not import" };
+
+function WatchFolder() {
+  const { data, reload } = useApi<Watch>("/watch");
+  const [path, setPath] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const value = path ?? data?.folder ?? "";
+
+  async function save(folder: string, create = false) {
+    setBusy(true); setError(null); setMissing(false);
+    try { await send("/watch", "PUT", { folder, create }); setPath(null); reload(); }
+    catch (err) {
+      const msg = (err as Error).message;
+      if (msg.includes("does not exist")) setMissing(true); else setError(msg);
+    }
+    setBusy(false);
+  }
+  async function scan() {
+    setBusy(true); setError(null);
+    try { await send("/watch/scan", "POST"); reload(); } catch (err) { setError((err as Error).message); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-ink-soft">
+        Save the day's files in one folder: the collection report, the terminal sheet, the expense sheet. CODesk looks in it every
+        {" "}{data?.interval ?? 10} seconds, recognises each file by its columns, imports the good rows and moves the file to <b>Imported</b>.
+        A file it cannot read goes to <b>Problems</b>.
+      </p>
+      <form onSubmit={(e) => { e.preventDefault(); save(value.trim()); }} className="space-y-2">
+        <label className="block text-sm font-medium">Folder on this computer
+          <input className="field" value={value} onChange={(e) => { setPath(e.target.value); setMissing(false); }}
+            placeholder={"C:\\Users\\you\\Documents\\CODesk inbox"} spellCheck={false} /></label>
+        <div className="flex flex-wrap gap-2">
+          <button disabled={busy || !value.trim() || value.trim() === data?.folder} className="btn-primary">Use this folder</button>
+          {data?.folder && <button type="button" disabled={busy} onClick={scan} className="btn-quiet">Check now</button>}
+          {data?.folder && <button type="button" disabled={busy} onClick={() => save("")} className="btn-quiet ml-auto">Turn off</button>}
+        </div>
+      </form>
+      {missing && (
+        <p className="flex flex-wrap items-center gap-2 rounded-md bg-brass-soft px-3 py-2 text-sm text-brass-dark">
+          This folder does not exist yet.
+          <button disabled={busy} onClick={() => save(value.trim(), true)} className="btn-primary !px-3 !py-1 text-xs">Create it</button>
+        </p>
+      )}
+      <FormError message={error} />
+      {data?.folder && (
+        <p className={`flex items-center gap-2 text-sm ${data.exists ? "text-leaf-dark" : "text-short"}`}>
+          <span className={`h-2 w-2 rounded-full ${data.exists && data.running ? "animate-pulse bg-leaf" : "bg-short"}`} />
+          {!data.exists ? "The folder cannot be found. Check the path." : data.running ? "Watching" : "Watching is turned off on this server"}
+          {data.last_scan && data.exists && <span className="text-ink-faint">· last look {fmtWhen(data.last_scan)}</span>}
+        </p>
+      )}
+      {!!data?.files.length && (
+        <ol className="max-h-72 divide-y divide-paper-line overflow-y-auto rounded-lg border border-paper-line">
+          {data.files.map((f) => (
+            <li key={f.id} className="px-3 py-2.5 text-sm">
+              <p className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 truncate font-medium" title={f.filename}>{f.filename}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${FILE_TONE[f.status]}`}>{FILE_TEXT[f.status]}</span>
+                <time className="num ml-auto text-xs text-ink-faint">{fmtWhen(f.at)}</time>
+              </p>
+              <p className="mt-0.5 text-xs text-ink-soft">{f.kind_text} · {f.summary}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { username, loginEnabled } = useAuth();
   const log = useApi<AuditEntry[]>("/audit?limit=200");
@@ -74,6 +152,8 @@ export default function Settings() {
           <Panel title="How your cash desk works"><CashMode /></Panel>
           {loginEnabled && <Panel title="Password"><PasswordForm /></Panel>}
         </div>
+        <div className="min-w-0 space-y-6">
+        <Panel title="Watch folder"><WatchFolder /></Panel>
         <Panel title="Activity log" flush className="">
           <p className="border-b border-paper-line px-5 py-3 text-xs text-ink-faint">Every change made in CODesk, newest first. Entries cannot be edited or deleted.</p>
           {log.loading && !log.data ? <Loading /> : log.error ? <div className="p-5"><ErrorBox message={log.error} retry={log.reload} /></div>
@@ -89,6 +169,7 @@ export default function Settings() {
               </ol>
             )}
         </Panel>
+        </div>
       </div>
     </>
   );

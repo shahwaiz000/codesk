@@ -6,6 +6,7 @@ _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["DATA_DIR"] = _tmp
 os.environ["AUTH_ENABLED"] = "false"  # test_auth.py switches it on for its own tests
+os.environ["WATCH_ENABLED"] = "false"  # tests call the watch folder's scan directly
 os.environ["SEED_DEMO_DATA"] = "false"  # the client fixture seeds with a fixed date so answers never change
 
 import pytest  # noqa: E402
