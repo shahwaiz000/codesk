@@ -88,7 +88,8 @@ function MachinesPanel({ machines, rows, onChanged }: { machines: Machine[]; row
   const free = machines.filter((m) => !m.driver_id);
   const paired = machines.filter((m) => m.driver_id);
   // any active driver can be chosen: a driver whose card orders were all closed as cash has no POS orders at all
-  const drivers = useApi<Driver[]>("/drivers").data ?? [];
+  const list = useApi<Driver[]>("/drivers").data;
+  const drivers = Array.isArray(list) ? list : [];
   const posIds = new Set(rows.filter((r) => r.order_count > 0).map((r) => r.driver_id));
   const others = drivers.filter((d) => d.active && !posIds.has(d.id));
 
