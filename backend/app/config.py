@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"  # the local AI that reads deposit slips (free, runs on this computer)
     slip_model: str = "qwen3-vl:4b"             # reads handwriting best among the models that fit a laptop
     slip_model_small: str = "qwen3-vl:2b"       # used when the bigger one does not fit in the free memory
-    gemini_model: str = "gemini-2.5-flash"       # Google's free-tier model, for demo data only
+    gemini_model: str = "gemini-3.8-flash"       # Google's free-tier model, for demo data only (change it on Settings when Google renames it)
     ask_model: str = "qwen3:4b"                 # the local text model for Ask CODesk
     slip_context: int = 4096                    # room for the picture and the answer (less memory)
     slip_timeout: int = 300                     # seconds: a laptop without a graphics card reads a slip in 1-3 minutes
