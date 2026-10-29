@@ -6,7 +6,7 @@ import { Icon } from "../components/icons";
 import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, send, useApi } from "../lib";
-import type { CollectionDay, Driver, Handover } from "../types";
+import type { CollectionDay, DepositLedger, Driver, Handover } from "../types";
 
 function Figure({ label, children, foot }: { label: string; children: React.ReactNode; foot?: React.ReactNode }) {
   return (
@@ -15,6 +15,50 @@ function Figure({ label, children, foot }: { label: string; children: React.Reac
       <dd className="mt-1 text-[22px] font-semibold leading-tight">{children}</dd>
       {foot && <dd className="mt-1 text-xs text-ink-faint">{foot}</dd>}
     </div>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = {
+  deposited: "bg-leaf text-white", overdue: "bg-short text-white", short: "bg-short text-white", over: "bg-brass-glow text-ledger-950",
+  due_today: "bg-brass-glow text-ledger-950", not_due: "bg-white/15 text-white", nothing: "bg-white/15 text-white",
+};
+
+/** The day's cash, large enough to read across the room, with where it stands on its way to the bank. */
+function CashHero({ day, t }: { day: string; t: CollectionDay["totals"] }) {
+  const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1`).data?.rows?.find((r) => r.date === day);
+  return (
+    <section aria-label="Cash collected" className="relative mb-6 overflow-hidden rounded-panel bg-ledger-900 text-white shadow-pop">
+      {/* banknote guilloche */}
+      <svg aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-[28rem] w-[28rem] text-brass-glow/15" viewBox="0 0 200 200" fill="none" stroke="currentColor" strokeWidth="0.6">
+        {Array.from({ length: 14 }, (_, i) => <ellipse key={i} cx="100" cy="100" rx={30 + i * 5} ry={18 + i * 4} transform={`rotate(${i * 13} 100 100)`} />)}
+      </svg>
+      <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-wider text-brass-glow">
+            <Icon name="cash" className="h-5 w-5" />Cash collected · {fmtDay(day)}
+          </p>
+          <p className="num mt-3 text-[2.6rem] font-semibold leading-none tracking-tight sm:text-6xl lg:text-7xl">
+            <span className="whitespace-nowrap">{fmtMoney(t.cash_received)}</span>{" "}
+            <span className="inline-block whitespace-nowrap align-baseline text-lg font-normal text-ledger-300 sm:ml-2 sm:text-2xl">SAR</span>
+          </p>
+          {dep && (
+            <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ledger-300">
+              <span>Paid out <span className="num font-medium text-white">{fmtMoney(dep.paid_out)}</span></span>
+              <span aria-hidden="true">→</span>
+              <span>To the bank <span className="num font-semibold text-white">{fmtMoney(dep.to_deposit)}</span></span>
+              <span>due {fmtDay(dep.due_on)}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_TONE[dep.status] ?? "bg-white/15 text-white"}`}>{dep.status_text}</span>
+            </p>
+          )}
+        </div>
+        <dl className="grid grid-cols-2 gap-x-8 gap-y-4 border-t border-white/10 pt-5 text-sm lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+          <div><dt className="text-ledger-300">POS (card)</dt><dd className="num mt-1 text-xl font-semibold">{fmtMoney(t.pos_amount)}</dd></div>
+          <div><dt className="text-ledger-300">Total collected</dt><dd className="num mt-1 text-xl font-semibold">{fmtMoney(t.total)}</dd></div>
+          <div><dt className="text-ledger-300">Drivers</dt><dd className="num mt-1 text-xl font-semibold">{t.drivers}</dd></div>
+          <div><dt className="text-ledger-300">Orders closed</dt><dd className="num mt-1 text-xl font-semibold">{t.orders}</dd></div>
+        </dl>
+      </div>
+    </section>
   );
 }
 
@@ -82,22 +126,7 @@ export default function Collections() {
 
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
-          {paid ? (
-          <dl className="mb-6 grid grid-cols-2 divide-paper-line overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 lg:divide-x [&>*]:border-paper-line max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r">
-            <Figure label="Cash collected" foot="Goes to the bank, less what you paid out">
-              <Money value={t.cash_received} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
-            </Figure>
-            <Figure label="POS (card)" foot="Machine totals from the POS check">
-              <Money value={t.pos_amount} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
-            </Figure>
-            <Figure label="Total collected" foot={<><span className="num">{t.orders}</span> orders closed</>}>
-              <Money value={t.total} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
-            </Figure>
-            <Figure label="Drivers" foot="With orders closed on this day">
-              <span className="num">{t.drivers}</span>
-            </Figure>
-          </dl>
-          ) : (
+          {paid ? <CashHero day={day} t={t} /> : (
           <dl className="mb-6 grid grid-cols-2 divide-paper-line overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 lg:divide-x [&>*]:border-paper-line max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r">
             <Figure label="Cash counted" foot={<>Expected <span className="num">{fmtMoney(t.expected_cash)}</span></>}>
               <Money value={t.cash_received} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
@@ -155,7 +184,7 @@ export default function Collections() {
                   </thead>
                   <tbody>
                     {rows.map((h) => (
-                      <tr key={h.id} className={`border-b border-paper-line hover:bg-paper/60 ${h.status === "short" ? "bg-short-soft/40" : ""}`}>
+                      <tr key={h.id} className={`border-b border-paper-line hover:bg-paper/60 ${!paid && h.status === "short" ? "bg-short-soft/40" : ""}`}>
                         <td className="px-5 py-3">
                           <span className="num mr-2 font-semibold text-ink-soft">{h.driver_code}</span>
                           <span className="font-medium">{h.driver_name}</span>

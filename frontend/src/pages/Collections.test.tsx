@@ -69,7 +69,8 @@ test("the handover form shows the cash difference while typing", async () => {
 test("a desk that closes orders only when paid sees cash per driver without counting", async () => {
   mockApi("paid");
   render(<BusinessDayProvider><Collections /></BusinessDayProvider>);
-  expect(await screen.findByText("Cash collected")).toBeInTheDocument();
+  const hero = await screen.findByRole("region", { name: "Cash collected" });
+  expect(within(hero).getByText("1,950.00")).toBeInTheDocument(); // the day's cash, shown large
   expect(screen.queryByText("Cash counted")).not.toBeInTheDocument();
   expect(screen.queryByText("Short")).not.toBeInTheDocument();
   expect(screen.queryByText("Not handed over yet")).not.toBeInTheDocument();
