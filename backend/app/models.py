@@ -115,6 +115,23 @@ class PosOrder(Base):
     driver: Mapped[Driver] = relationship()
 
 
+class TerminalTotal(Base):
+    """One POS machine's total for one day, from the terminal sheet. Machines move between drivers,
+    so the driver is found each day: by the machine's known owner, by an exact amount match with a
+    driver's system POS orders, or chosen by hand."""
+    __tablename__ = "terminal_totals"
+    __table_args__ = (UniqueConstraint("business_date", "terminal"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_date: Mapped[date] = mapped_column(Date, index=True)
+    terminal: Mapped[str] = mapped_column(String(30))
+    amount: Mapped[int] = mapped_column(Integer)
+    driver_id: Mapped[int | None] = mapped_column(ForeignKey("drivers.id"), nullable=True)
+    paired_by: Mapped[str] = mapped_column(String(10), default="")  # terminal | amount | hand, empty when not paired
+    created_by: Mapped[str] = mapped_column(String(40), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    driver: Mapped[Driver | None] = relationship()
+
+
 class PosReview(Base):
     """A person's decision on one driver's POS difference for one day. The totals at the time of the
     decision are kept, so a review that no longer matches the numbers shows as out of date."""

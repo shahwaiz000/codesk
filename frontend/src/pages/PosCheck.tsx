@@ -5,7 +5,7 @@ import { Icon } from "../components/icons";
 import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, fmtWhen, send, useApi } from "../lib";
-import type { PosDay, PosRow } from "../types";
+import type { Machine, PairedBy, PosDay, PosRow } from "../types";
 
 const driverCell = (r: PreviewRow) => r.driver_code
   ? <><span className="num font-medium">{r.driver_code as string}</span> <span className="text-ink-soft">{r.driver_name as string}</span></>
@@ -16,9 +16,13 @@ const ORDER_PREVIEW = [
   { label: "Driver", cell: driverCell },
   { label: "Amount", right: true, cell: money("amount") },
 ];
+export const PAIRED_TEXT: Record<PairedBy, string> = { terminal: "registered machine", amount: "same amount", hand: "chosen by hand" };
+
 const TERMINAL_PREVIEW = [
   { label: "Terminal", cell: (r: PreviewRow) => <span className="num">{(r.terminal as string) ?? "-"}</span> },
-  { label: "Driver", cell: driverCell },
+  { label: "Driver", cell: (r: PreviewRow) => r.driver_code
+    ? <>{driverCell(r)} <span className="text-xs text-ink-faint">({PAIRED_TEXT[r.paired_by as PairedBy]})</span></>
+    : <span className="text-ink-faint">-</span> },
   { label: "Was", right: true, cell: money("previous") },
   { label: "Terminal total", right: true, cell: money("amount") },
 ];
@@ -77,7 +81,82 @@ function Orders({ day, r }: { day: string; r: PosRow }) {
   );
 }
 
-function ReviewBox({ day, r, onChanged }: { day: string; r: PosRow; onChanged: () => void }) {
+function MachinesPanel({ machines, rows, onChanged }: { machines: Machine[]; rows: PosRow[]; onChanged: () => void }) {
+  const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [other, setOther] = useState<Record<number, string>>({});
+  const free = machines.filter((m) => !m.driver_id);
+  const paired = machines.filter((m) => m.driver_id);
+  const withOrders = rows.filter((r) => r.order_count > 0);
+
+  async function pair(m: Machine, driverId: number | null) {
+    setBusy(m.id); setError(null);
+    try { await send(`/pos/machines/${m.id}`, "PUT", { driver_id: driverId }); onChanged(); }
+    catch (err) { setError((err as Error).message); }
+    setBusy(null);
+  }
+
+  return (
+    <Panel title={free.length ? `${free.length} POS machine${free.length === 1 ? "" : "s"} to match with a driver` : "POS machines"} className="mb-6">
+      {free.length > 0 && (
+        <>
+          <p className="mb-4 text-sm text-ink-soft">
+            {paired.length} of {machines.length} machines were matched automatically. For each machine below, pick the driver who had it.
+            The closest system totals are shown first; a small difference is usually the driver's POS difference for the day.
+          </p>
+          <ul className="space-y-3">
+            {free.map((m) => (
+              <li key={m.id} className="rounded-lg border border-brass/30 bg-brass-soft/40 p-4">
+                <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
+                  <span className="text-xs text-ink-faint">Machine</span>
+                  <span className="num font-semibold">{m.terminal}</span>
+                  <span className="ml-auto text-lg font-semibold"><Money value={m.amount} /> <span className="text-xs font-normal text-ink-faint">SAR</span></span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {m.suggestions.map((s) => (
+                    <button key={s.driver_id} disabled={busy === m.id} onClick={() => pair(m, s.driver_id)}
+                      className="flex min-w-0 flex-col items-start rounded-lg border border-paper-line bg-white px-3 py-2 text-left text-sm hover:border-ledger-700 disabled:opacity-50">
+                      <span><span className="num font-semibold">{s.driver_code}</span> <span className="text-ink-soft">{s.driver_name}</span></span>
+                      <span className="text-xs text-ink-faint">system <Money value={s.system_total} />, difference{" "}
+                        <Money value={s.difference} tone={Math.abs(s.difference) < 0.005 ? "leaf" : s.difference < 0 ? "short" : "brass"} /></span>
+                    </button>
+                  ))}
+                  <span className="flex items-center gap-2">
+                    <select aria-label={`Other driver for machine ${m.terminal}`} className="field !mt-0 !w-auto" value={other[m.id] ?? ""}
+                      onChange={(e) => setOther({ ...other, [m.id]: e.target.value })}>
+                      <option value="">Another driver...</option>
+                      {withOrders.map((r) => <option key={r.driver_id} value={r.driver_id}>{r.driver_code} {r.driver_name}</option>)}
+                    </select>
+                    {other[m.id] && <button disabled={busy === m.id} onClick={() => pair(m, Number(other[m.id]))} className="btn-primary">Match</button>}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <FormError message={error} />
+      {paired.length > 0 && (
+        <details className={free.length ? "mt-5" : ""}>
+          <summary className="cursor-pointer text-sm text-ink-soft">{paired.length} machine{paired.length === 1 ? "" : "s"} matched with a driver</summary>
+          <ul className="mt-3 divide-y divide-paper-line text-sm">
+            {paired.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <span className="num w-24 font-medium">{m.terminal}</span>
+                <span className="min-w-0 flex-1"><span className="num font-semibold text-ink-soft">{m.driver_code}</span> {m.driver_name}
+                  <span className="ml-2 text-xs text-ink-faint">{m.paired_by ? PAIRED_TEXT[m.paired_by] : ""}</span></span>
+                <Money value={m.amount} />
+                <button disabled={busy === m.id} onClick={() => pair(m, null)} className="btn-quiet !px-2 !py-1 text-xs">Undo</button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </Panel>
+  );
+}
+
+function ReviewBox({ day, r, sheet, onChanged }: { day: string; r: PosRow; sheet: boolean; onChanged: () => void }) {
   const [note, setNote] = useState(r.review?.note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,7 +177,9 @@ function ReviewBox({ day, r, onChanged }: { day: string; r: PosRow; onChanged: (
 
   if (r.status === "agrees") return <p className="text-sm text-leaf-dark">The terminal total agrees with the system to the halala. Nothing to review.</p>;
   if (r.status === "awaiting_orders") return <p className="text-sm text-ink-soft">The terminal total is recorded, but the system’s POS orders for this day are not imported yet, so there is nothing to compare it with. Import the system orders for this day.</p>;
-  if (r.status === "no_terminal") return <p className="text-sm text-ink-soft">This driver has POS orders but no handover yet, so there is no terminal total. Record his handover on the Collections page, or import the terminal sheet.</p>;
+  if (r.status === "no_terminal") return <p className="text-sm text-ink-soft">{sheet
+    ? "No POS machine is matched with this driver yet. Match his machine in the box above the table."
+    : "This driver has POS orders but no handover yet, so there is no terminal total. Record his handover on the Collections page, or import the terminal sheet."}</p>;
   const rv = r.review;
   return (
     <form onSubmit={(e) => decide("explained", e)} className="space-y-3">
@@ -162,17 +243,17 @@ export default function PosCheck() {
               <dd className="mt-1 text-xs text-ink-faint"><span className="num">{t.order_count}</span> orders</dd>
             </div>
             <div className="p-5">
-              <dt className="text-sm text-ink-soft">Terminal totals</dt>
-              <dd className="mt-1 text-[22px] font-semibold"><Money value={t.terminal_total} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
-              <dd className="mt-1 text-xs text-ink-faint">{t.awaiting ? `${t.awaiting} waiting for system orders` : t.no_terminal ? `${t.no_terminal} without a terminal total` : `${t.drivers} drivers`}</dd>
+              <dt className="text-sm text-ink-soft">{t.sheet ? "POS machines" : "Terminal totals"}</dt>
+              <dd className="mt-1 text-[22px] font-semibold"><Money value={t.sheet ? t.machines_total : t.terminal_total} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
+              <dd className="mt-1 text-xs text-ink-faint">{t.sheet ? `${t.machines} machines${t.unpaired ? `, ${t.unpaired} not matched yet` : ", all matched"}` : t.awaiting ? `${t.awaiting} waiting for system orders` : t.no_terminal ? `${t.no_terminal} without a terminal total` : `${t.drivers} drivers`}</dd>
             </div>
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Difference</dt>
               <dd className="mt-1 text-[22px] font-semibold">
-                {t.differences ? <Money value={t.difference} tone={t.short ? "short" : "brass"} /> : <Money value={0} tone="leaf" />}
+                {t.difference ? <Money value={t.difference} tone={t.difference < 0 ? "short" : "brass"} /> : <Money value={0} tone="leaf" />}
               </dd>
               <dd className="mt-1 text-xs text-ink-faint">
-                {t.differences ? [t.short && `terminals short ${fmtMoney(t.short)}`, t.over && `over ${fmtMoney(t.over)}`].filter(Boolean).join(", ") : t.awaiting ? "Not checked yet" : t.drivers ? "Every terminal agrees" : "Nothing recorded"}
+                {t.sheet && t.order_count ? (t.difference ? `Machines ${t.difference < 0 ? "below" : "above"} the system orders` : "Machines agree with the system") : t.differences ? [t.short && `terminals short ${fmtMoney(t.short)}`, t.over && `over ${fmtMoney(t.over)}`].filter(Boolean).join(", ") : t.awaiting ? "Not checked yet" : t.drivers ? "Every terminal agrees" : "Nothing recorded"}
               </dd>
             </div>
             <div className="p-5">
@@ -183,6 +264,8 @@ export default function PosCheck() {
               <dd className="mt-1 text-xs text-ink-faint"><span className="num">{t.agrees}</span> agree, <span className="num">{t.explained}</span> explained</dd>
             </div>
           </dl>
+
+          {!!data.machines?.length && data.orders_imported && <MachinesPanel machines={data.machines} rows={data.rows} onChanged={changed} />}
 
           <Panel flush title={`POS by driver on ${fmtDay(day)}`}
             action={(t.differences > 0 || t.no_terminal > 0) && (
@@ -221,7 +304,8 @@ export default function PosCheck() {
                           <tr onClick={() => setOpen(expanded ? null : r.driver_id)}
                             className={`cursor-pointer border-b border-paper-line hover:bg-paper/60 ${r.open ? "bg-short-soft/40" : ""} ${expanded ? "bg-paper/80" : ""}`}>
                             <td className="px-5 py-3"><span className="num mr-2 font-semibold text-ink-soft">{r.driver_code}</span><span className="font-medium">{r.driver_name}</span></td>
-                            <td className="num px-3 py-3 text-ink-soft">{r.terminal ?? <span className="text-ink-faint">Not set</span>}</td>
+                            <td className="num px-3 py-3 text-ink-soft">{r.terminal ?? <span className="text-ink-faint">{t.sheet ? "Not matched" : "Not set"}</span>}
+                              {r.paired_by && r.paired_by !== "terminal" && <span className="block text-xs text-ink-faint">{PAIRED_TEXT[r.paired_by]}</span>}</td>
                             <td className="num px-3 py-3 text-right text-ink-soft">{r.order_count}</td>
                             <td className="px-3 py-3 text-right"><Money value={r.system_total} /></td>
                             <td className="px-3 py-3 text-right font-medium">{r.terminal_total == null ? <span className="text-ink-faint">-</span> : <Money value={r.terminal_total} />}</td>
@@ -241,7 +325,7 @@ export default function PosCheck() {
                               <td colSpan={8} className="px-5 py-5">
                                 <div className="grid gap-6 lg:grid-cols-2">
                                   <Orders day={day} r={r} />
-                                  <ReviewBox key={`${r.driver_id}-${r.review?.at ?? ""}`} day={day} r={r} onChanged={changed} />
+                                  <ReviewBox key={`${r.driver_id}-${r.review?.at ?? ""}`} day={day} r={r} sheet={!!t.sheet} onChanged={changed} />
                                 </div>
                               </td>
                             </tr>
@@ -252,10 +336,10 @@ export default function PosCheck() {
                   </tbody>
                   {!onlyOpen && (
                     <tfoot><tr className="bg-paper/70 font-semibold">
-                      <td className="px-5 py-3" colSpan={2}>Day total</td>
+                      <td className="px-5 py-3" colSpan={2}>Day total{t.unpaired ? <span className="block text-xs font-normal text-ink-faint">machines include {fmtMoney(t.unpaired_total ?? 0)} not matched yet</span> : null}</td>
                       <td className="num px-3 py-3 text-right">{t.order_count}</td>
                       <td className="px-3 py-3 text-right"><Money value={t.system_total} /></td>
-                      <td className="px-3 py-3 text-right"><Money value={t.terminal_total} /></td>
+                      <td className="px-3 py-3 text-right"><Money value={t.sheet ? t.machines_total : t.terminal_total} /></td>
                       <td className="px-3 py-3 text-right">{t.difference ? <Money value={t.difference} tone={t.difference < 0 ? "short" : "brass"} /> : "-"}</td>
                       <td colSpan={2} />
                     </tr></tfoot>
@@ -276,7 +360,7 @@ export default function PosCheck() {
       {importing === "terminals" && (
         <ImportDialog day={day} title="Import the terminal sheet" endpoint="/pos/import/terminals" templateUrl="/api/pos/template/terminals"
           noun={["terminal total", "terminal totals"]} columns={TERMINAL_PREVIEW}
-          intro="One row per POS terminal with the day's total. Terminals are matched to drivers by the terminal ID on the Drivers page, and the driver's handover must already be recorded."
+          intro="One row per POS machine with the day's total, or your own sheet with a POS Code column and the date as the amount column's heading. Each machine is matched to a driver by its registered terminal ID or by the exact amount of his system POS orders; you match the rest by hand."
           onClose={() => setImporting(null)} onSaved={(dates) => { setImporting(null); if (dates.length === 1) setDay(dates[0]); changed(); }} />
       )}
     </>

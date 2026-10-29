@@ -23,7 +23,8 @@ def norm_header(name) -> str:
     return re.sub(r"[^a-z0-9]", "", str(name).lower())
 
 
-def read_upload(filename: str, data: bytes) -> pd.DataFrame:
+def read_upload(filename: str, data: bytes, keep_unnamed: bool = False) -> pd.DataFrame:
+    """keep_unnamed keeps columns without a heading, for sheets whose real heading is lower down."""
     if not data:
         raise FileProblem("The file is empty")
     if len(data) > MAX_BYTES:
@@ -56,7 +57,8 @@ def read_upload(filename: str, data: bytes) -> pd.DataFrame:
         raise FileProblem("The file could not be read. Check that it is a normal CSV or Excel file with one header row")
     if len(df) > MAX_ROWS:
         raise FileProblem(f"The file has more than {MAX_ROWS:,} rows")
-    df = df.loc[:, [not str(c).startswith("Unnamed") for c in df.columns]]
+    if not keep_unnamed:
+        df = df.loc[:, [not str(c).startswith("Unnamed") for c in df.columns]]
     df = df[~(df.astype(str).apply(lambda r: "".join(r).strip(), axis=1) == "")]  # drop fully empty rows
     return df.reset_index(drop=True)
 
@@ -99,3 +101,39 @@ def clean_code(value) -> str:
     if re.fullmatch(r"\d+\.0+", text):
         text = text.split(".")[0]
     return text
+
+
+def find_header(df: pd.DataFrame, aliases: tuple[str, ...], look: int = 10) -> tuple[pd.DataFrame, int]:
+    """Some sheets have a title or a total line above the real heading. When the first row has none of
+    the expected column names, look in the next few rows for one that does and use it as the heading.
+    Returns the table and how many rows were above the heading (to keep row numbers right)."""
+    if find_column(df, aliases):
+        return df, 0
+    for k in range(min(look, len(df))):
+        values = list(df.iloc[k])
+        if any(norm_header(v) in aliases for v in values):
+            out = df.iloc[k + 1:].copy()
+            out.columns = [str(v).strip() or f"Unnamed: {i}" for i, v in enumerate(values)]
+            return out.reset_index(drop=True), k + 1
+    return df, 0
+
+
+MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+
+
+def header_day(name, year: int) -> date | None:
+    """A column heading that is a date, as in a sheet with one column per day: '27-Oct', '27/10/2026',
+    or a real Excel date (read as '2026-10-27 00:00:00'). A heading without a year gets `year`."""
+    text = str(name).strip()
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})(?: 00:00:00)?", text)
+    if m:
+        return date(int(m[1]), int(m[2]), int(m[3]))
+    m = re.fullmatch(r"(\d{1,2})[-/ ]([A-Za-z]{3})[A-Za-z]*", text)
+    if m and m[2].lower() in MONTHS:
+        try:
+            return date(year, MONTHS[m[2].lower()], int(m[1]))
+        except ValueError:
+            return None
+    if re.fullmatch(r"\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{1,2}[-/ ][A-Za-z]{3,9}[-/ ]\d{2,4}", text):
+        return read_date(text)
+    return None

@@ -33,13 +33,20 @@ export interface PosReview { status: "explained" | "follow_up"; note: string; by
 export interface PosRow {
   driver_id: number; driver_code: string; driver_name: string; terminal: string | null;
   system_total: number; order_count: number; terminal_total: number | null; difference: number | null;
-  status: PosStatus; status_text: string; review: PosReview | null; open: boolean;
+  status: PosStatus; status_text: string; review: PosReview | null; open: boolean; paired_by?: PairedBy | null;
+}
+export type PairedBy = "terminal" | "amount" | "hand";
+export interface Machine {
+  id: number; terminal: string; amount: number; driver_id: number | null; driver_code: string | null; driver_name: string | null;
+  paired_by: PairedBy | null;
+  suggestions: { driver_id: number; driver_code: string; driver_name: string; system_total: number; difference: number }[];
 }
 export interface PosTotals {
   system_total: number; terminal_total: number; difference: number; order_count: number; drivers: number;
   agrees: number; differences: number; no_terminal: number; awaiting: number; open: number; explained: number; short: number; over: number;
+  sheet?: boolean; machines?: number; machines_total?: number; unpaired?: number; unpaired_total?: number; drivers_without_machine?: number;
 }
-export interface PosDay { date: string; rows: PosRow[]; totals: PosTotals; orders_imported: boolean }
+export interface PosDay { date: string; rows: PosRow[]; totals: PosTotals; orders_imported: boolean; machines?: Machine[] }
 
 export interface ExpenseRow {
   id: number; business_date: string; driver_id: number; driver_code: string; driver_name: string;

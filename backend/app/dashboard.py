@@ -13,7 +13,7 @@ from .collections import day_totals
 from .database import get_db
 from .deposits import ledger
 from .deps import parse_day
-from .models import Collection, Driver, Expense, PosOrder
+from .models import Collection, Driver, Expense, PosOrder, TerminalTotal
 from .money import to_sar
 from .seed import business_days
 
@@ -29,16 +29,16 @@ def previous_day_with_data(db: Session, day: date) -> date | None:
 def day_figures(db: Session, day: date, deposit_rows: dict) -> dict:
     handovers = db.query(Collection).filter_by(business_date=day).all()
     c = day_totals(handovers)
-    p = pos.summarize(pos.day_rows(db, day))
+    _, p = pos.day_summary(db, day)
     spent = dict(db.query(Expense.category == "advance", func.sum(Expense.amount))
                  .filter(Expense.business_date == day).group_by(Expense.category == "advance").all())
     d = deposit_rows.get(day.isoformat())
     return {
         "cash_received": c["cash_received"], "expected_cash": c["expected_cash"],
         "cash_short": c["short"], "cash_over": c["over"], "short_count": c["short_count"], "over_count": c["over_count"],
-        "pos_terminal": c["pos_amount"], "pos_system": p["system_total"], "pos_difference": p["difference"],
+        "pos_terminal": p["machines_total"], "pos_system": p["system_total"], "pos_difference": p["difference"],
         "pos_open": p["open"], "pos_differences": p["differences"], "pos_awaiting": p["awaiting"],
-        "total_collected": c["total"], "orders": c["orders"], "drivers": c["drivers"],
+        "total_collected": round(c["cash_received"] + p["machines_total"], 2), "orders": c["orders"], "drivers": c["drivers"],
         "expenses": to_sar(int(spent.get(False) or 0)), "advances": to_sar(int(spent.get(True) or 0)),
         "paid_out": d["paid_out"] if d else 0.0, "returned": d["returned"] if d else 0.0,
         "to_deposit": d["to_deposit"] if d else 0.0, "deposited": d["deposited"] if d else 0.0,
@@ -83,6 +83,12 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     pos_days = [d for (d,) in db.query(PosOrder.business_date).filter(PosOrder.business_date >= since).distinct()]
     pos_days += [d for (d,) in db.query(Collection.business_date).filter(Collection.business_date >= since,
                                                                           Collection.pos_amount > 0).distinct()]
+    unpaired = (db.query(TerminalTotal.business_date, func.count(TerminalTotal.id), func.sum(TerminalTotal.amount))
+                .filter(TerminalTotal.business_date >= since, TerminalTotal.driver_id.is_(None)).group_by(TerminalTotal.business_date))
+    for d, n, total in unpaired:
+        alerts.append({"kind": "pos_unpaired", "date": d.isoformat(), "amount": to_sar(int(total)), "page": "/pos",
+                       "text": f"{n} POS machine{'s' if n != 1 else ''} not matched to a driver"})
+    pos_days += [d for (d,) in db.query(TerminalTotal.business_date).filter(TerminalTotal.business_date >= since).distinct()]
     for d in sorted(set(pos_days), reverse=True):
         for r in pos.day_rows(db, d):
             if r["open"]:
@@ -101,6 +107,8 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
                 .filter(Collection.business_date.between(days[0], days[-1])).group_by(Collection.business_date))
     card = dict(db.query(Collection.business_date, func.sum(Collection.pos_amount))
                 .filter(Collection.business_date.between(days[0], days[-1])).group_by(Collection.business_date))
+    card.update(db.query(TerminalTotal.business_date, func.sum(TerminalTotal.amount))  # a terminal sheet wins
+                .filter(TerminalTotal.business_date.between(days[0], days[-1])).group_by(TerminalTotal.business_date))
     trend = [{"date": d.isoformat(), "cash": to_sar(int(cash.get(d) or 0)), "pos": to_sar(int(card.get(d) or 0)),
               "deposit_status": by_date.get(d.isoformat(), {}).get("status", "nothing")} for d in days]
 

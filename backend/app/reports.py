@@ -38,16 +38,15 @@ def report_data(db: Session, first: date, last: date) -> dict:
     days = sorted({h.business_date for h in handovers} | {date.fromisoformat(r["date"]) for r in deposit_rows})
     pos_rows, summary = [], []
     for d in days:
-        rows = pos.day_rows(db, d)
+        rows, totals = pos.day_summary(db, d)
         pos_rows += [{**r, "date": d.isoformat()} for r in rows]
-        totals = pos.summarize(rows)
         hs = [h for h in handovers if h.business_date == d]
         dep = dep_by_day.get(d.isoformat(), {})
         summary.append({
             "date": d.isoformat(), "drivers": len(hs),
             "expected_cash": to_sar(sum(h.expected_cash for h in hs)), "cash_received": to_sar(sum(h.cash_received for h in hs)),
             "cash_difference": to_sar(sum(h.cash_received - h.expected_cash for h in hs)),
-            "pos_system": totals["system_total"], "pos_terminal": totals["terminal_total"], "pos_difference": totals["difference"],
+            "pos_system": totals["system_total"], "pos_terminal": totals["machines_total"], "pos_difference": totals["difference"],
             "paid_out": dep.get("paid_out", 0.0), "returned": dep.get("returned", 0.0), "to_deposit": dep.get("to_deposit", 0.0),
             "deposited": dep.get("deposited", 0.0), "pending": dep.get("pending", 0.0),
             "deposit_status": dep.get("status_text", "Nothing to deposit"), "late": dep.get("late", False)})

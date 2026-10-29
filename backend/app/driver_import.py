@@ -15,7 +15,7 @@ from .database import get_db
 from .deps import current_user
 from .files import FileProblem, clean_code, find_column, read_upload
 from .models import Driver
-from .pos import TERMINAL_COLUMNS
+from .terminals import TERMINAL_COLUMNS
 
 router = APIRouter(prefix="/api/drivers", tags=["drivers"])
 

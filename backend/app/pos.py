@@ -18,7 +18,8 @@ from .collections import COLUMNS as HANDOVER_COLUMNS, MAX_AMOUNT
 from .database import get_db
 from .deps import current_user, not_future, parse_day
 from .files import FileProblem, clean_code, find_column, read_date, read_upload
-from .models import Collection, Driver, PosOrder, PosReview, utcnow, iso
+from . import terminals
+from .models import Collection, Driver, PosOrder, PosReview, TerminalTotal, utcnow, iso
 from .money import to_halalas, to_sar
 
 router = APIRouter(prefix="/api/pos", tags=["pos"])
@@ -43,13 +44,26 @@ def day_rows(db: Session, day: date) -> list[dict]:
     orders_loaded = bool(orders)
     handovers = {c.driver_id: c for c in db.query(Collection).filter_by(business_date=day)}
     reviews = {r.driver_id: r for r in db.query(PosReview).filter_by(business_date=day)}
-    ids = set(orders) | set(handovers)
+    # with a terminal sheet for the day, a driver's terminal total is the machines paired with him;
+    # without one, it is the POS amount written on his handover
+    machines = db.query(TerminalTotal).filter_by(business_date=day).all()
+    paired = defaultdict(list)
+    for m in machines:
+        if m.driver_id:
+            paired[m.driver_id].append(m)
+    ids = set(orders) | set(handovers) | set(paired)
     drivers = {d.id: d for d in db.query(Driver).filter(Driver.id.in_(ids))} if ids else {}
     rows = []
     for did in sorted(ids, key=lambda i: drivers[i].code):
         d, h = drivers[did], handovers.get(did)
         system, count = orders[did]
-        terminal = h.pos_amount if h else None
+        ms = paired.get(did, [])
+        if machines:
+            terminal = sum(m.amount for m in ms) if ms else None
+            label = ", ".join(m.terminal for m in ms) or None
+        else:
+            terminal = h.pos_amount if h else None
+            label = (h.pos_terminal if h and h.pos_terminal else d.pos_terminal) or None
         status = _status(system, terminal, orders_loaded)
         r = reviews.get(did)
         review = None
@@ -57,7 +71,7 @@ def day_rows(db: Session, day: date) -> list[dict]:
             review = {"status": r.status, "note": r.note, "by": r.decided_by, "at": iso(r.decided_at),
                       "stale": (r.system_total, r.terminal_total) != (system, terminal)}
         rows.append({"driver_id": did, "driver_code": d.code, "driver_name": d.name,
-                     "terminal": (h.pos_terminal if h and h.pos_terminal else d.pos_terminal) or None,
+                     "terminal": label, "paired_by": ms[0].paired_by if ms else None,
                      "system_total": to_sar(system), "order_count": count, "terminal_total": to_sar(terminal),
                      "difference": to_sar(terminal - system) if terminal is not None else None,
                      "status": status, "status_text": STATUS_TEXT[status], "review": review,
@@ -65,11 +79,23 @@ def day_rows(db: Session, day: date) -> list[dict]:
     return rows
 
 
-def summarize(rows: list[dict]) -> dict:
+def summarize(rows: list[dict], machines: list | None = None) -> dict:
+    """machines: the day's terminal sheet, if there is one. Machines not yet paired with a driver still
+    count in the day's machine total, so the day's difference is never hidden."""
     diffs = [r for r in rows if r["status"] in ("terminal_short", "terminal_over")]
-    return {"system_total": round(sum(r["system_total"] for r in rows), 2),
-            "terminal_total": round(sum(r["terminal_total"] or 0 for r in rows), 2),
-            "difference": round(sum(r["difference"] or 0 for r in diffs), 2),
+    machines = machines or []
+    unpaired = to_sar(sum(m.amount for m in machines if not m.driver_id))
+    system = round(sum(r["system_total"] for r in rows), 2)
+    paired_total = round(sum(r["terminal_total"] or 0 for r in rows), 2)
+    machines_total = round(paired_total + unpaired, 2)
+    if machines and any(r["order_count"] for r in rows):
+        difference = round(machines_total - system, 2)  # every machine of the day against every POS order
+    else:
+        difference = round(sum(r["difference"] or 0 for r in diffs), 2)
+    return {"system_total": system, "terminal_total": paired_total, "difference": difference,
+            "sheet": bool(machines), "machines": len(machines), "machines_total": machines_total,
+            "unpaired": sum(1 for m in machines if not m.driver_id), "unpaired_total": unpaired,
+            "drivers_without_machine": sum(1 for r in rows if r["order_count"] and r["terminal_total"] is None) if machines else 0,
             "order_count": sum(r["order_count"] for r in rows), "drivers": len(rows),
             "agrees": sum(r["status"] == "agrees" for r in rows), "differences": len(diffs),
             "no_terminal": sum(r["status"] == "no_terminal" for r in rows),
@@ -80,11 +106,16 @@ def summarize(rows: list[dict]) -> dict:
             "over": round(sum(r["difference"] for r in diffs if r["difference"] > 0), 2)}
 
 
+def day_summary(db: Session, day: date) -> tuple[list[dict], dict]:
+    rows = day_rows(db, day)
+    return rows, summarize(rows, db.query(TerminalTotal).filter_by(business_date=day).all())
+
+
 @router.get("")
 def pos_day(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     day = parse_day(date_)
-    rows = day_rows(db, day)
-    return {"date": day.isoformat(), "rows": rows, "totals": summarize(rows),
+    rows, totals = day_summary(db, day)
+    return {"date": day.isoformat(), "rows": rows, "totals": totals, "machines": terminals.machine_list(db, day, rows),
             "orders_imported": db.query(PosOrder).filter_by(business_date=day).count() > 0}
 
 
@@ -156,11 +187,6 @@ ORDER_COLUMNS = {
     "method": ("collectmethod", "collectionmethod", "collectiontype", "paymentmethod", "paymenttype", "payment",
                "paymentmode", "method", "paidby"),
     "charge": ("chargecategory", "chargetype", "charge", "feetype"),
-}
-TERMINAL_COLUMNS = {
-    "terminal": ("terminalid", "terminalno", "terminalnumber", "terminal", "tid", "posterminal", "posid", "posterminalid"),
-    "amount": ("totalamount", "amount", "total", "settledamount", "netamount", "posamount", "totalsales", "sales"),
-    "date": HANDOVER_COLUMNS["date"] + ("settlementdate", "transactiondate"),
 }
 POS_WORDS = ("pos", "card", "mada", "visa", "master", "network", "span", "credit", "debit")
 SPLIT_WORDS = ("part", "mixed", "split")  # e.g. "part pos and part cash": the file does not say how much was POS
@@ -315,60 +341,6 @@ def _save_orders(db: Session, rows, user: str, filename: str) -> int:
     return saved
 
 
-def _check_terminals(db: Session, df, default_day: date | None):
-    cols = {k: find_column(df, v) for k, v in TERMINAL_COLUMNS.items()}
-    missing = [label for key, label in (("terminal", "Terminal ID"), ("amount", "Total amount")) if not cols[key]]
-    if missing:
-        raise FileProblem(f"The file needs these columns: {', '.join(missing)}. Download the template to see the layout")
-    if not cols["date"] and not default_day:
-        raise FileProblem("The file has no Date column, so choose the business date first")
-    by_terminal = {d.pos_terminal: d for d in db.query(Driver).filter(Driver.active.is_(True), Driver.pos_terminal != "")}
-    seen: dict[tuple, int] = {}
-    out = []
-    for i, r in df.iterrows():
-        line, problems = i + 2, []
-        terminal = clean_code(r[cols["terminal"]]).replace(" ", "")
-        day = _row_day(r, cols["date"], default_day, problems)
-        amount = _amount(r[cols["amount"]], problems, "total amount")
-        handover = drv = None
-        if not terminal:
-            problems.append("no terminal ID")
-        elif day:
-            handover = db.query(Collection).filter_by(business_date=day, pos_terminal=terminal).first()
-            drv = handover.driver if handover else by_terminal.get(terminal)
-            if not drv:
-                problems.append(f"terminal {terminal} is not given to any driver. Add it on the Drivers page")
-            elif not handover:
-                handover = db.query(Collection).filter_by(business_date=day, driver_id=drv.id).first()
-                if not handover:
-                    problems.append(f"{drv.code} has no handover on this day yet. Record the handover first")
-            if (day, terminal) in seen:
-                problems.append(f"terminal repeated, first on row {seen[(day, terminal)]}")
-            else:
-                seen[(day, terminal)] = line
-        status = "error" if problems else ("same" if handover.pos_amount == amount else "update")
-        out.append({"line": line, "status": status, "problems": problems, "terminal": terminal or None,
-                    "driver_code": drv.code if drv else None, "driver_name": drv.name if drv else "",
-                    "date": day.isoformat() if day else None, "amount": to_sar(amount),
-                    "previous": to_sar(handover.pos_amount) if handover else None,
-                    "_handover": handover, "_amount": amount, "_terminal": terminal})
-    return out
-
-
-def _save_terminals(db: Session, rows, user: str, filename: str) -> int:
-    saved = 0
-    for r in rows:
-        if r["status"] != "update":
-            continue
-        h = r["_handover"]
-        audit.record(db, user, "updated", "collection", h.id,
-                     f"{h.driver.code} on {h.business_date.isoformat()} terminal {r['_terminal']} total "
-                     f"{to_sar(h.pos_amount):,.2f} -> {r['amount']:,.2f} (import {filename})")
-        h.pos_amount, h.pos_terminal = r["_amount"], r["_terminal"]
-        saved += 1
-    return saved
-
-
 @router.post("/import/{kind}")
 async def import_file(kind: str, file: UploadFile = File(...), business_date: str = Form(""), commit: bool = Form(False),
                       db: Session = Depends(get_db), user: str = Depends(current_user)):
@@ -378,15 +350,20 @@ async def import_file(kind: str, file: UploadFile = File(...), business_date: st
         raise HTTPException(404, "Unknown import")
     default_day = not_future(parse_day(business_date, "business_date")) if business_date else None
     try:
-        df = read_upload(file.filename or "", await file.read(1 + 5_000_000))
-        rows = (_check_orders if kind == "orders" else _check_terminals)(db, df, default_day)
+        df = read_upload(file.filename or "", await file.read(1 + 5_000_000), keep_unnamed=kind == "terminals")
+        rows = (_check_orders if kind == "orders" else terminals.check_sheet)(db, df, default_day)
     except FileProblem as e:
         raise HTTPException(422, str(e))
     if not rows:
         raise HTTPException(422, "The file has a header but no rows")
     saved = 0
     if commit:
-        saved = (_save_orders if kind == "orders" else _save_terminals)(db, rows, user, file.filename or "file")
+        saved = (_save_orders if kind == "orders" else terminals.save_sheet)(db, rows, user, file.filename or "file")
+        if kind == "orders":  # new system orders can complete the pairing of that day's machines
+            db.flush()
+            for d in sorted({r["_day"] for r in rows if r.get("_day")}):
+                if db.query(TerminalTotal).filter_by(business_date=d).count():
+                    terminals.auto_pair(db, d, user)
         db.commit()
     counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "skipped", "error")}
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]

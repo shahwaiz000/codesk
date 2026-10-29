@@ -1,5 +1,5 @@
 """Stage 3: POS check, system POS orders against the terminal total, per driver and day."""
-from datetime import date
+from datetime import date, timedelta
 
 from app.database import SessionLocal
 from app.models import Collection, PosOrder
@@ -94,22 +94,90 @@ def test_order_import_checks_skips_cash_rows_and_saves(client):
     assert r["counts"]["same"] == 1 and r["counts"]["update"] == 1
 
 
-def test_terminal_sheet_sets_terminal_totals(client):
+def test_terminal_sheet_pairs_registered_machines(client):
     d = OTHER_DAY.isoformat()
     client.put("/api/collections", json={"business_date": d, "driver_id": did(client, "D-101"),
                                          "expected_cash": 0, "cash_received": 0, "pos_amount": 0})
     text = ("TID,Total Sales\n"
-            "6031 1101,150.50\n"     # D-101's terminal, spaces are ignored
-            "60311102,10\n"          # D-102 has no handover that day
-            "99999999,10\n")         # nobody's terminal
+            "6031 1101,150.50\n"     # D-101's registered machine, spaces are ignored
+            "60311102,10\n"          # D-102's machine: paired even without a handover
+            "99999999,10\n")         # nobody's machine and no driver with this amount
     r = client.post("/api/pos/import/terminals", files=upload("terminals.csv", text), data={"business_date": d}).json()
-    assert r["counts"]["update"] == 1 and r["counts"]["error"] == 2
-    problems = " | ".join(p for x in r["rows"] for p in x["problems"])
-    assert "no handover on this day" in problems and "not given to any driver" in problems
+    assert r["counts"]["new"] == 3 and r["counts"]["error"] == 0
+    assert [(x["driver_code"], x["paired_by"]) for x in r["rows"]] == [("D-101", "terminal"), ("D-102", "terminal"), (None, None)]
     client.post("/api/pos/import/terminals", files=upload("terminals.csv", text), data={"business_date": d, "commit": "true"})
-    row = next(x for x in client.get("/api/pos", params={"date": d}).json()["rows"] if x["driver_code"] == "D-101")
-    assert row["terminal_total"] == 150.5 and row["status"] == "agrees"
-    assert any("terminal 60311101 total 0.00 -> 150.50" in a["summary"] for a in client.get("/api/audit").json())
+    day = client.get("/api/pos", params={"date": d}).json()
+    row = next(x for x in day["rows"] if x["driver_code"] == "D-101")
+    assert row["terminal_total"] == 150.5 and row["status"] == "agrees" and row["paired_by"] == "terminal"
+    assert day["totals"]["unpaired"] == 1 and day["totals"]["machines_total"] == 170.5
+    assert day["totals"]["difference"] == round(170.5 - day["totals"]["system_total"], 2)
+    handover = next(h for h in client.get("/api/collections", params={"date": d}).json()["rows"] if h["driver_code"] == "D-101")
+    assert handover["pos_amount"] == 150.5  # the handover follows the machine
+    assert any("POS 0.00 -> 150.50" in a["summary"] for a in client.get("/api/audit").json())
+
+
+def _sheet(day, rows):
+    """A terminal sheet laid out like a real desk sheet: a total line, then 'POS Code | <date>'."""
+    import io
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Total POS COD", "=SUM(B3:B20)"])  # a formula without a saved value reads as empty
+    ws.append(["POS Code", day])
+    for r in rows:
+        ws.append(list(r))
+    buf = io.BytesIO()
+    wb.save(buf)
+    return {"file": ("terminal.xlsx", buf.getvalue(), "application/octet-stream")}
+
+
+def test_machines_without_owner_are_paired_by_exact_amount(client):
+    day = date.today() - timedelta(days=1)  # recent, so it shows in the dashboard's alerts
+    d = day.isoformat()
+    sheet = _sheet(day, [(64800001, 300), (64800002, "125.50"), (64800003, 95), (64800004, None),
+                         (64800005, 50), (64800006, 50), ("Grand Total", 620.5)])
+    r = client.post("/api/pos/import/terminals", files=sheet, data={"business_date": d}).json()
+    assert r["counts"] == {"new": 5, "update": 0, "same": 0, "skipped": 2, "error": 0}
+    assert r["dates"] == [d] and r["rows"][0]["line"] == 3  # row numbers as in Excel
+    client.post("/api/pos/import/terminals", files=sheet, data={"business_date": d, "commit": "true"})
+    assert client.get("/api/pos", params={"date": d}).json()["totals"]["unpaired"] == 5  # no system orders yet
+
+    # the system orders arrive: exact amounts pair, two drivers with the same 50.00 are left to the person
+    orders = ("Order no,Driver ID,Amount\nPR-1,D-103,200\nPR-2,D-103,100\nPR-3,D-104,125.50\nPR-4,D-106,80\n"
+              "PR-5,D-107,50\nPR-6,D-108,50\n")
+    client.post("/api/pos/import/orders", files=upload("o.csv", orders), data={"business_date": d, "commit": "true"})
+    p = client.get("/api/pos", params={"date": d}).json()
+    rows = {x["driver_code"]: x for x in p["rows"]}
+    assert rows["D-103"]["status"] == "agrees" and rows["D-103"]["terminal"] == "64800001" and rows["D-103"]["paired_by"] == "amount"
+    assert rows["D-104"]["status"] == "agrees" and rows["D-106"]["status"] == "no_terminal"
+    t = p["totals"]
+    assert (t["machines_total"], t["system_total"], t["difference"], t["unpaired"]) == (620.5, 605.5, 15.0, 3)
+    free = {m["terminal"]: m for m in p["machines"] if not m["driver_id"]}
+    assert set(free) == {"64800003", "64800005", "64800006"}
+    near = free["64800003"]["suggestions"][0]
+    assert near["driver_code"] == "D-106" and near["difference"] == 15.0
+    alerts = client.get("/api/dashboard", params={"date": d}).json()["alerts"]
+    assert any(a["kind"] == "pos_unpaired" and a["date"] == d for a in alerts)
+
+    # the person pairs the rest by hand
+    client.put(f"/api/pos/machines/{free['64800003']['id']}", json={"driver_id": did(client, "D-106")})
+    client.put(f"/api/pos/machines/{free['64800005']['id']}", json={"driver_id": did(client, "D-107")})
+    client.put(f"/api/pos/machines/{free['64800006']['id']}", json={"driver_id": did(client, "D-108")})
+    p = client.get("/api/pos", params={"date": d}).json()
+    rows = {x["driver_code"]: x for x in p["rows"]}
+    assert rows["D-106"]["status"] == "terminal_over" and rows["D-106"]["difference"] == 15.0 and rows["D-106"]["paired_by"] == "hand"
+    assert p["totals"]["unpaired"] == 0 and p["totals"]["difference"] == 15.0
+    # and can undo a pair
+    client.put(f"/api/pos/machines/{free['64800006']['id']}", json={"driver_id": None})
+    assert client.get("/api/pos", params={"date": d}).json()["totals"]["unpaired"] == 1
+
+
+def test_date_headings():
+    from app.files import header_day
+    assert header_day("27-Oct", 2026) == date(2026, 10, 27)
+    assert header_day("2026-10-27 00:00:00", 2000) == date(2026, 10, 27)
+    assert header_day("27/10/2026", 2000) == date(2026, 10, 27)
+    assert header_day("26821.07", 2026) is None and header_day("Total", 2026) is None
 
 
 def test_terminal_numbers_on_drivers(client):

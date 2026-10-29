@@ -14,7 +14,7 @@ from . import audit
 from .database import get_db
 from .deps import current_user, not_future, parse_day
 from .files import FileProblem, clean_code, find_column, read_date, read_upload
-from .models import Collection, Driver
+from .models import Collection, Driver, TerminalTotal
 from .money import to_halalas, to_sar
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
@@ -107,6 +107,9 @@ def save_handover(db: Session, user: str, day: date, driver: Driver, orders: int
                   pos: int, note: str, source: str = "") -> tuple[Collection, str]:
     """Create or update one driver's handover for a day. Returns (row, "new" | "updated" | "same")."""
     existing = db.query(Collection).filter_by(business_date=day, driver_id=driver.id).first()
+    machines = db.query(TerminalTotal).filter_by(business_date=day).all()
+    if machines:  # with a terminal sheet for the day, the POS amount is the machines paired with this driver
+        pos = sum(m.amount for m in machines if m.driver_id == driver.id)
     values = {"orders": orders, "expected_cash": expected, "cash_received": received, "pos_amount": pos, "note": note,
               "pos_terminal": (existing.pos_terminal if existing and existing.pos_terminal else driver.pos_terminal)}
     if existing:

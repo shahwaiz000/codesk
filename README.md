@@ -26,7 +26,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 ![Collections](docs/screenshots/collections.png)
 
-**POS check.** For each driver, the orders the system shows as closed by POS against his terminal's total for the day. Until the system's POS orders for a day are imported, terminal totals show as waiting rather than as differences. Click a driver to see his POS orders. If one order is exactly the size of the difference it is highlighted, because that is usually the order closed as POS but paid in cash. Each difference is marked *explained* (a reason is required) or *needs follow-up*. If the numbers change after a review, the review shows as out of date and the difference is open again.
+**POS check.** For each driver, the orders the system shows as closed by POS against his terminal's total for the day. Until the system's POS orders for a day are imported, terminal totals show as waiting rather than as differences. POS machines move between drivers, so the terminal sheet does not need a driver column: each machine is matched to a driver by its registered terminal ID, or by the exact amount of one driver's system POS orders, and the few left are matched by hand from the closest totals. Machines not matched yet still count in the day's difference. The sheet can be a plain list or the desk's own layout (a total line on top, *POS Code* and the date as headings). Click a driver to see his POS orders. If one order is exactly the size of the difference it is highlighted, because that is usually the order closed as POS but paid in cash. Each difference is marked *explained* (a reason is required) or *needs follow-up*. If the numbers change after a review, the review shows as out of date and the difference is open again.
 
 ![POS check](docs/screenshots/pos-check.png)
 
@@ -55,7 +55,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 81 backend tests (pytest) and 13 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 83 backend tests (pytest) and 14 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 
@@ -115,6 +115,7 @@ backend/app/
   main.py         app start-up, login check, drivers, activity log
   collections.py  driver handovers and their import
   pos.py          POS check: system POS orders against terminal totals, reviews, imports
+  terminals.py    the terminal sheet and matching each day's POS machines with drivers
   expenses.py     expenses and advances, recovery by salary or cash
   deposits.py     the cash-to-deposit ledger and deposit slips
   dashboard.py    the day at a glance and the needs-attention list
