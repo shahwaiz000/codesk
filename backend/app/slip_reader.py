@@ -147,6 +147,7 @@ def ask_model(png: bytes) -> dict:
     why = ""
     for model in models:
         body = {"model": model, "prompt": PROMPT, "images": [image], "format": SCHEMA, "stream": False, "think": False,
+                "keep_alive": 0,  # give the memory back as soon as the slip is read
                 "options": {"temperature": 0, "num_ctx": settings.slip_context}}
         for _ in range(2):
             try:
