@@ -72,6 +72,9 @@ def test_without_the_ai_the_slip_waits_with_a_reason(client, monkeypatch):
     monkeypatch.setattr(slip_reader, "ask_model", offline)
     r = client.post("/api/slips/read", files={"file": ("slip.png", _png(), "image/png")}).json()
     assert r["status"] == "failed" and "Ollama" in r["error"]
+    monkeypatch.setattr(slip_reader, "ask_model", lambda png: _slip(total=500, words="five hundred", lines=((500, 1, 500),)))
+    again = client.post(f"/api/slips/{r['id']}/retry").json()
+    assert again["status"] == "draft" and again["total"] == 500 and again["error"] is None
     assert client.post("/api/slips/read", files={"file": ("slip.txt", b"x", "text/plain")}).status_code == 422
     assert client.get("/api/slips/ai").json()["ready"] is False  # no Ollama in the test environment
 
@@ -94,3 +97,12 @@ def test_the_watch_folder_reads_slips(client, monkeypatch, tmp_path):
         done = watcher.scan(db, wait=False)
     assert done[0]["kind"] == "slip" and "read 500.00" in done[0]["summary"] and "Bank deposits" in done[0]["summary"]
     client.put("/api/watch", json={"folder": ""})
+
+
+def test_the_ai_error_is_shown(monkeypatch):
+    import urllib.error
+    def fail(path, body=None, timeout=5):
+        raise urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b'{"error":"model requires more system memory (5.1 GiB) than is available (3.9 GiB)"}'))
+    monkeypatch.setattr(slip_reader, "_ollama", fail)
+    with pytest.raises(slip_reader.SlipProblem, match="ran out of memory"):
+        slip_reader.ask_model(b"png")

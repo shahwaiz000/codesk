@@ -65,7 +65,13 @@ function Draft({ s, days, onDone }: { s: SlipDraft; days: DepositDay[]; onDone: 
         <div className="space-y-3">
           <p className="text-sm font-semibold text-short">Could not read this slip</p>
           <p className="text-sm text-ink-soft">{s.error}</p>
-          <button disabled={busy} onClick={() => act(`/slips/${s.id}/dismiss`)} className="btn-quiet">Put aside</button>
+          <FormError message={error} />
+          {busy && <p className="flex items-center gap-2 text-sm text-ink-soft" role="status">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-leaf border-t-transparent" />Reading again… 1 to 3 minutes.</p>}
+          <div className="flex flex-wrap gap-2">
+            {s.has_image && <button disabled={busy} onClick={() => act(`/slips/${s.id}/retry`)} className="btn-primary">Read again</button>}
+            <button disabled={busy} onClick={() => act(`/slips/${s.id}/dismiss`)} className="btn-quiet">Put aside</button>
+          </div>
         </div>
       ) : (
         <form onSubmit={submit} className="min-w-0 space-y-4">

@@ -37,7 +37,7 @@ from .money import to_halalas, to_sar
 router = APIRouter(prefix="/api/slips", tags=["slips"])
 
 TYPES = (".pdf", ".jpg", ".jpeg", ".png")
-MAX_SIDE = 1400  # pixels: enough for handwriting, small enough for a laptop model
+MAX_SIDE = 1100  # pixels: enough for handwriting, small enough for a laptop model's memory
 NOTES = (500, 200, 100, 50, 20, 10, 5, 1)
 
 SCHEMA = {
@@ -117,16 +117,34 @@ def ai_status() -> dict:
     return {"ready": has, "ollama": True, "model": settings.slip_model, "has_model": has}
 
 
+def _error_text(e: urllib.error.HTTPError) -> str:
+    try:
+        return str(json.loads(e.read() or b"{}").get("error") or "")
+    except (ValueError, OSError):
+        return ""
+
+
 def ask_model(png: bytes) -> dict:
     """Send the picture to the local model and get back what it read."""
     body = {"model": settings.slip_model, "prompt": PROMPT, "images": [base64.b64encode(png).decode()],
-            "format": SCHEMA, "stream": False, "think": False, "options": {"temperature": 0}}
-    try:
-        answer = _ollama("/api/generate", body, timeout=settings.slip_timeout)
-    except urllib.error.HTTPError as e:
-        raise SlipProblem(f"The AI model could not read the slip ({e.code}). Is {settings.slip_model} downloaded?")
-    except (urllib.error.URLError, OSError):
-        raise SlipProblem("The AI is not running. Start Ollama, then read the slip again")
+            "format": SCHEMA, "stream": False, "think": False,
+            "options": {"temperature": 0, "num_ctx": settings.slip_context}}
+    answer = None
+    for _ in range(2):
+        try:
+            answer = _ollama("/api/generate", body, timeout=settings.slip_timeout)
+            break
+        except urllib.error.HTTPError as e:
+            why = _error_text(e)
+            if "think" in why.lower() and "think" in body:  # an older Ollama or a model without the switch
+                body.pop("think")
+                continue
+            if "memory" in why.lower():
+                raise SlipProblem(f"The laptop ran out of memory for the AI ({why}). Close other programs, "
+                                  "especially browser tabs, and read the slip again")
+            raise SlipProblem(f"The AI could not read the slip: {why or e.code}")
+        except (urllib.error.URLError, OSError):
+            raise SlipProblem("The AI is not running. Start Ollama, then read the slip again")
     try:
         return json.loads(answer.get("response") or "{}")
     except ValueError:
@@ -232,6 +250,17 @@ def read_slip(db: Session, filename: str, data: bytes, user: str) -> SlipScan:
         png = to_image(filename, data)
         (slip_dir() / f"{scan.id}.png").write_bytes(png)
         scan.has_image = True
+    except SlipProblem as e:
+        scan.error = str(e)
+        db.commit()
+        return scan
+    return _read_picture(db, scan, png, user)
+
+
+def _read_picture(db: Session, scan: SlipScan, png: bytes, user: str) -> SlipScan:
+    filename = scan.filename
+    scan.status, scan.error = "failed", ""
+    try:
         fields = ask_model(png)
         result = check(fields, db)
         scan.fields = json.dumps(fields)
@@ -281,6 +310,16 @@ async def read(file: UploadFile = File(...), db: Session = Depends(get_db), user
     if len(data) > 15_000_000:
         raise HTTPException(422, "The file is larger than 15 MB")
     return slip_dict(read_slip(db, name, data, user))
+
+
+@router.post("/{sid}/retry")
+def retry(sid: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    """Read a slip that failed again, from the picture already saved."""
+    s = db.get(SlipScan, sid)
+    path = slip_dir() / f"{sid}.png"
+    if not s or s.status != "failed" or not path.exists():
+        raise HTTPException(404, "This slip cannot be read again: upload it once more")
+    return slip_dict(_read_picture(db, s, path.read_bytes(), user))
 
 
 @router.get("/{sid}/image")

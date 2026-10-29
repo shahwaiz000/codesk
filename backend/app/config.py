@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     watch_interval: int = 10    # seconds between looks
     ollama_url: str = "http://localhost:11434"  # the local AI that reads deposit slips (free, runs on this computer)
     slip_model: str = "qwen3-vl:4b"             # a small vision model that fits a laptop with 8 GB of memory
+    slip_context: int = 8192                    # room for the picture and the answer
     slip_timeout: int = 300                     # seconds: a laptop without a graphics card reads a slip in 1-3 minutes
 
 
