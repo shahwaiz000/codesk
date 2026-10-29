@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
+import { byRegion, useStation } from "../stations";
 import { Icon, IconName, Mark } from "./icons";
 
 type NavItem = { to: string; label: string; icon: IconName };
@@ -17,20 +18,49 @@ export const NAV: { title: string; items: NavItem[] }[] = [
     { to: "/reports", label: "Reports", icon: "report" },
     { to: "/ask", label: "Ask CODesk", icon: "spark" },
     { to: "/drivers", label: "Drivers", icon: "drivers" },
+    { to: "/stations", label: "Stations", icon: "warehouse" },
   ] },
 ];
+
+/** Which station the desk looks at: one warehouse, or all of them together. */
+export function StationPicker() {
+  const { station, stations, choose } = useStation();
+  const active = stations.filter((s) => s.active || s.id === station?.id);
+  return (
+    <label className="group relative mx-3 mb-6 block rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-brass-glow/40 hover:bg-white/[0.07]">
+      <span className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ledger-300/80">
+        <Icon name="pin" className="h-3.5 w-3.5 text-brass-glow" />Station
+      </span>
+      <span className="mt-0.5 flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-sm font-semibold text-white">{station ? station.name : "All stations"}</span>
+        <span className="num shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-ledger-300">{station ? station.code : active.length}</span>
+      </span>
+      {station?.region && <span className="block text-xs text-ledger-300/80">{station.region}</span>}
+      <select aria-label="Station" value={station ? String(station.id) : ""} onChange={(e) => choose(e.target.value ? Number(e.target.value) : null)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
+        <option value="">All stations</option>
+        {byRegion(active).map(([region, list]) => (
+          <optgroup key={region} label={region}>
+            {list.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function Sidebar() {
   const { username, loginEnabled, logout } = useAuth();
   return (
     <div className="flex h-full flex-col">
-      <Link to="/" className="flex items-center gap-3 px-6 pb-8 pt-7">
+      <Link to="/" className="flex items-center gap-3 px-6 pb-6 pt-7">
         <Mark />
         <span className="leading-tight">
           <span className="block text-[16px] font-semibold text-white">CODesk</span>
           <span className="block text-xs text-ledger-300">Logistics finance</span>
         </span>
       </Link>
+      <StationPicker />
       <nav aria-label="Main" className="flex-1 space-y-7 overflow-y-auto px-3">
         {NAV.map((g) => (
           <div key={g.title}>
@@ -67,6 +97,7 @@ function Sidebar() {
 export default function Layout() {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const { station, version } = useStation();
 
   useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {
@@ -97,8 +128,9 @@ export default function Layout() {
           <button aria-label="Open menu" aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen(true)}
             className="rounded-lg p-2 text-ink-soft hover:bg-white"><Icon name="menu" /></button>
           <Mark className="h-7 w-7" /><span className="font-semibold">CODesk</span>
+          <span className="ml-auto flex items-center gap-1 truncate text-xs text-ink-soft"><Icon name="pin" className="h-3.5 w-3.5" />{station ? station.name : "All stations"}</span>
         </header>
-        <main className="mx-auto w-full max-w-[1280px] min-w-0 flex-1 px-4 pb-12 pt-6 md:px-10 md:pt-9"><Outlet /></main>
+        <main className="mx-auto w-full max-w-[1280px] min-w-0 flex-1 px-4 pb-12 pt-6 md:px-10 md:pt-9"><Outlet key={version} /></main>
       </div>
     </div>
   );

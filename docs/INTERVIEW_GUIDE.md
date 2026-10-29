@@ -32,6 +32,7 @@ Start from a fresh database (delete `backend\codesk.db`, start the backend, crea
 - **A reason is required to close a difference.** "You can't just make a difference disappear. Explaining it needs a note, and if the numbers change later, the explanation shows as out of date."
 - **The log can't be edited.** "The activity log only accepts new entries. Even the database layer refuses edits or deletions, because an audit trail you can edit isn't an audit trail."
 - **The terminal is stored on each day.** "POS machines move between drivers. Each handover keeps the terminal used that day, so old days don't change when a machine is reassigned."
+- **Many stations, one filter.** "The company has 50+ warehouses. Instead of adding a station filter to every page, the backend applies it to every database query in one place, and stamps every new record with its station. A page can't forget it, and a station can never see another station's money."
 - **One calculation, used everywhere.** "The dashboard, the deposits page and the reports all use the same function for cash to deposit, so the numbers can never disagree."
 - **Planted mistakes in the demo data, checked by tests.** "I know exactly which mistakes are in the data. The tests check the app finds those and nothing else. That's how I know the logic is right, not just that it looks right."
 

@@ -10,13 +10,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, ai, ask, morning, slip_reader, unusual, watcher
+from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, ai, ask, morning, scope, slip_reader, stations, unusual, watcher
+scope_module = scope  # the station filter (its events are registered on import)
 from .deps import current_user
 from .config import settings
 from .database import Base, SessionLocal, add_missing_columns, engine, get_db
-from .models import AppSetting, AuditEvent, Collection, Deposit, Driver, Expense, User, iso
+from .models import AppSetting, AuditEvent, Collection, Deposit, Driver, Expense, User, iso, Station
 from .money import to_sar
-from .seed import seed_demo
+from .seed import seed_demo, seed_more_stations
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -27,9 +28,14 @@ async def lifespan(app: FastAPI):
     added = add_missing_columns()
     if added:
         logging.getLogger("codesk").info("Updated the database: added %s", ", ".join(added))
+    with SessionLocal() as db:
+        stations.ensure_defaults(db)
     if settings.seed_demo_data:
         with SessionLocal() as db:
             seed_demo(db)
+            seed_more_stations(db)
+    with SessionLocal() as db:
+        stations.assign_missing(db)
     stop = watcher.start()
     yield
     if stop:
@@ -52,6 +58,32 @@ app.include_router(unusual.router)
 app.include_router(morning.router)
 app.include_router(ai.router)
 app.include_router(ask.router)
+app.include_router(stations.router)
+
+
+class StationScope:
+    """Reads the station the person is looking at (X-Station header, or ?station= on a download link)
+    and applies it to every query of the request (see scope.py). Empty or "all" means all stations."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        raw = dict(scope.get("headers") or []).get(b"x-station", b"").decode()
+        if not raw:
+            from urllib.parse import parse_qs
+            raw = (parse_qs(scope.get("query_string", b"").decode()).get("station") or [""])[0]
+        sid = int(raw) if raw.isdigit() else None
+        token = scope_module.current_station.set(sid)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            scope_module.current_station.reset(token)
+
+
+app.add_middleware(StationScope)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(","), allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -113,6 +145,7 @@ class DriverIn(BaseModel):
     phone: str = Field("", max_length=20)
     hub: str = Field("", max_length=60)
     pos_terminal: str = Field("", max_length=30)
+    station_id: int | None = None  # empty: the station being looked at
 
 
 class DriverPatch(BaseModel):
@@ -121,6 +154,7 @@ class DriverPatch(BaseModel):
     hub: str | None = Field(None, max_length=60)
     pos_terminal: str | None = Field(None, max_length=30)
     active: bool | None = None
+    station_id: int | None = None
 
 
 def _clean_terminal(db: Session, terminal: str, driver_id: int | None) -> str:
@@ -151,7 +185,8 @@ def _driver_or_404(db: Session, did: int) -> Driver:
 def _driver_dict(d: Driver, stats: dict | None = None) -> dict:
     s = stats or {}
     return {"id": d.id, "code": d.code, "name": d.name, "phone": d.phone, "hub": d.hub, "active": d.active,
-            "pos_terminal": d.pos_terminal,
+            "pos_terminal": d.pos_terminal, "station_id": d.station_id,
+            "station": d.station.name if d.station else "", "station_code": d.station.code if d.station else "",
             "last_collection": iso(s.get("last")), "days_collected": s.get("days", 0),
             "cash_shortage": to_sar(s.get("short", 0)), "open_advances": to_sar(s.get("advances", 0)),
             "open_advance_count": s.get("advance_count", 0)}
@@ -170,7 +205,7 @@ def list_drivers(db: Session = Depends(get_db)):
     for r in (db.query(Expense.driver_id, func.sum(Expense.amount), func.count(Expense.id))
               .filter(Expense.category == "advance", Expense.settled_on.is_(None)).group_by(Expense.driver_id)):
         coll.setdefault(r[0], {}).update(advances=int(r[1]), advance_count=r[2])
-    drivers = db.query(Driver).order_by(Driver.active.desc(), Driver.code).all()
+    drivers = scope.drivers(db).order_by(Driver.active.desc(), Driver.code).all()
     return [_driver_dict(d, coll.get(d.id)) for d in drivers]
 
 
@@ -179,8 +214,11 @@ def create_driver(body: DriverIn, db: Session = Depends(get_db), user: str = Dep
     code = _clean_code(body.code)
     if db.query(Driver).filter(func.upper(Driver.code) == code).first():
         raise HTTPException(409, f"A driver with ID {code} already exists")
+    station_id = body.station_id or scope.current_station.get()
+    if station_id is not None and not db.get(Station, station_id):
+        raise HTTPException(404, "Station not found")
     drv = Driver(code=code, name=" ".join(body.name.split()), phone=body.phone.strip(), hub=body.hub.strip(),
-                 pos_terminal=_clean_terminal(db, body.pos_terminal, None))
+                 pos_terminal=_clean_terminal(db, body.pos_terminal, None), station_id=station_id)
     db.add(drv)
     db.flush()
     audit.record(db, user, "created", "driver", drv.id, f"Added driver {code} {drv.name}")
@@ -196,6 +234,12 @@ def update_driver(did: int, body: DriverPatch, db: Session = Depends(get_db), us
     if body.active and not drv.active and drv.pos_terminal:
         _clean_terminal(db, drv.pos_terminal, drv.id)  # reactivating must not create two drivers on one terminal
     changes = []
+    if body.station_id is not None and body.station_id != drv.station_id:
+        new = db.get(Station, body.station_id)
+        if not new:
+            raise HTTPException(404, "Station not found")
+        changes.append(f"station: {drv.station.code if drv.station else 'none'} -> {new.code}")
+        drv.station = new  # his past records stay with the station they happened at
     for field in ("name", "phone", "hub", "pos_terminal", "active"):
         value = getattr(body, field)
         if value is None:
@@ -214,7 +258,8 @@ def update_driver(did: int, body: DriverPatch, db: Session = Depends(get_db), us
 @app.delete("/api/drivers/{did}")
 def delete_driver(did: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
     drv = _driver_or_404(db, did)
-    used = (db.query(Collection).filter_by(driver_id=did).count() + db.query(Expense).filter_by(driver_id=did).count())
+    used = (db.query(Collection).execution_options(all_stations=True).filter_by(driver_id=did).count()
+            + db.query(Expense).execution_options(all_stations=True).filter_by(driver_id=did).count())
     if used:
         raise HTTPException(409, f"{drv.code} has finance records, so it cannot be deleted. Mark the driver inactive instead")
     audit.record(db, user, "deleted", "driver", drv.id, f"Deleted driver {drv.code} {drv.name}")

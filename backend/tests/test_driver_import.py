@@ -63,6 +63,6 @@ def test_excel_with_number_only_ids_works_across_imports(client):
 
 
 def test_template_and_missing_columns(client):
-    assert "Driver ID,Driver name,Hub,Mobile,POS terminal ID" in client.get("/api/drivers/template").text
+    assert "Driver ID,Driver name,Station,Hub,Mobile,POS terminal ID" in client.get("/api/drivers/template").text
     r = client.post("/api/drivers/import", files=up("x.csv", "Driver ID,Hub\nE-1,X\n"))
     assert r.status_code == 422 and "Driver name" in r.json()["error"]["message"]

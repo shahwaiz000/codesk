@@ -14,11 +14,14 @@ import Expenses from "./pages/Expenses";
 import PosCheck from "./pages/PosCheck";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Stations from "./pages/Stations";
+import { StationProvider } from "./stations";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthGate>
+        <StationProvider>
         <BusinessDayProvider>
         <Routes>
           <Route element={<Layout />}>
@@ -30,11 +33,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="reports" element={<Reports />} />
             <Route path="ask" element={<Ask />} />
             <Route path="drivers" element={<Drivers />} />
+            <Route path="stations" element={<Stations />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
         </BusinessDayProvider>
+        </StationProvider>
       </AuthGate>
     </BrowserRouter>
   </React.StrictMode>,

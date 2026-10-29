@@ -19,7 +19,8 @@ from . import audit
 from .collections import MAX_AMOUNT
 from .database import get_db
 from .deps import current_user, not_future, parse_day
-from .models import Collection, Deposit, Expense
+from .models import Collection, Deposit, Expense, Station
+from .scope import current_station
 from .money import to_halalas, to_sar
 from .seed import business_days, next_working_day
 
@@ -56,26 +57,34 @@ def status_for(day: date, to_deposit: int, deposited: int, today: date) -> str:
 
 
 def ledger(db: Session, today: date | None = None) -> list[dict]:
-    """Every business day that has money in or out, newest first."""
+    """Every business day that has money in or out, newest first: one row per station and day, because
+    each station deposits its own cash."""
     today = today or date.today()
-    cash = dict(db.query(Collection.business_date, func.sum(Collection.cash_received)).group_by(Collection.business_date))
-    paid = dict(db.query(Expense.business_date, func.sum(Expense.amount)).group_by(Expense.business_date))
-    returned = dict(db.query(Expense.settled_on, func.sum(Expense.amount))
-                    .filter(Expense.category == "advance", Expense.settlement_method == "cash").group_by(Expense.settled_on))
+    cash = {(st, d): v for st, d, v in db.query(Collection.station_id, Collection.business_date, func.sum(Collection.cash_received))
+            .group_by(Collection.station_id, Collection.business_date)}
+    paid = {(st, d): v for st, d, v in db.query(Expense.station_id, Expense.business_date, func.sum(Expense.amount))
+            .group_by(Expense.station_id, Expense.business_date)}
+    returned = {(st, d): v for st, d, v in db.query(Expense.station_id, Expense.settled_on, func.sum(Expense.amount))
+                .filter(Expense.category == "advance", Expense.settlement_method == "cash").group_by(Expense.station_id, Expense.settled_on)}
     slips = defaultdict(list)
     for d in db.query(Deposit).order_by(Deposit.deposit_date, Deposit.id):
-        slips[d.business_date].append(d)
-    days = sorted(set(cash) | set(paid) | set(returned) | set(slips), reverse=True)
+        slips[(d.station_id, d.business_date)].append(d)
+    stations = {s.id: s for s in db.query(Station)}
+    keys = sorted(set(cash) | set(paid) | set(returned) | set(slips),
+                  key=lambda k: (k[1], stations[k[0]].name if k[0] in stations else ""), reverse=True)
     out = []
-    for day in days:
-        c, p, r = int(cash.get(day) or 0), int(paid.get(day) or 0), int(returned.get(day) or 0)
+    for key in keys:
+        st, day = key
+        c, p, r = int(cash.get(key) or 0), int(paid.get(key) or 0), int(returned.get(key) or 0)
         to_dep = c - p + r
-        dep = sum(s.amount for s in slips[day])
+        dep = sum(x.amount for x in slips[key])
         status = status_for(day, to_dep, dep, today)
         due = next_working_day(day)
-        last = max((s.deposit_date for s in slips[day]), default=None)
+        last = max((x.deposit_date for x in slips[key]), default=None)
         out.append({
             "date": day.isoformat(), "due_on": due.isoformat(),
+            "station_id": st, "station": stations[st].name if st in stations else "No station",
+            "station_code": stations[st].code if st in stations else "",
             "cash_received": to_sar(c), "paid_out": to_sar(p), "returned": to_sar(r),
             "to_deposit": to_sar(to_dep), "deposited": to_sar(dep),
             "pending": 0.0 if rounded(to_dep, dep) else to_sar(to_dep - dep),
@@ -83,18 +92,42 @@ def ledger(db: Session, today: date | None = None) -> list[dict]:
             "status": status, "status_text": STATUS_TEXT[status],
             "late": bool(last and last > due and dep > 0),
             "days_late": (last - due).days if last and last > due else 0,
-            "slips": [{"id": s.id, "deposit_date": s.deposit_date.isoformat(), "bank": s.bank, "slip_ref": s.slip_ref,
-                       "amount": to_sar(s.amount), "note": s.note, "created_by": s.created_by} for s in slips[day]],
+            "slips": [{"id": x.id, "deposit_date": x.deposit_date.isoformat(), "bank": x.bank, "slip_ref": x.slip_ref,
+                       "amount": to_sar(x.amount), "note": x.note, "created_by": x.created_by} for x in slips[key]],
         })
     return out
 
 
+WORST = ("overdue", "short", "over", "due_today", "not_due", "deposited", "nothing")
+
+
+def by_day(rows: list[dict]) -> list[dict]:
+    """The stations' rows of each day added together, for the all-stations view. The day's status is the
+    most urgent of its stations' (one station overdue makes the day overdue)."""
+    days: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        days[r["date"]].append(r)
+    out = []
+    for day, rs in sorted(days.items(), reverse=True):
+        if len(rs) == 1:
+            out.append(rs[0])
+            continue
+        status = min((r["status"] for r in rs), key=WORST.index)
+        add = lambda k: round(sum(r[k] for r in rs), 2)  # noqa: E731
+        out.append({"date": day, "due_on": rs[0]["due_on"], "station_id": None, "station": f"{len(rs)} stations", "station_code": "",
+                    **{k: add(k) for k in ("cash_received", "paid_out", "returned", "to_deposit", "deposited", "pending", "rounding")},
+                    "status": status, "status_text": STATUS_TEXT[status], "late": any(r["late"] for r in rs),
+                    "days_late": max(r["days_late"] for r in rs), "slips": [x for r in rs for x in r["slips"]]})
+    return out
+
+
 @router.get("")
-def deposits(end: str | None = None, count: int = 30, db: Session = Depends(get_db)):
+def deposits(end: str | None = None, count: int = 30, days: bool = False, db: Session = Depends(get_db)):
+    """days=true adds the stations of each day together (the all-stations view of one day)."""
     today = date.today()
     last = parse_day(end, "end") if end else today
     window = {d.isoformat() for d in business_days(last, max(1, min(count, 120)))}
-    all_days = ledger(db, today)
+    all_days = by_day(ledger(db, today)) if days else ledger(db, today)
     rows = [r for r in all_days if r["date"] in window or r["status"] in ("overdue", "short", "due_today", "not_due", "over")]
     pending_rows = [r for r in all_days if r["pending"] > 0]
     by = lambda s: [r for r in all_days if r["status"] == s]  # noqa: E731
@@ -116,6 +149,7 @@ class DepositIn(BaseModel):
     slip_ref: str = Field(min_length=2, max_length=60)
     amount: int | float | str
     note: str = Field("", max_length=300)
+    station_id: int | None = None  # whose cash: needed in the all-stations view when a day has several stations
 
 
 @router.post("", status_code=201)
@@ -128,22 +162,26 @@ def add_deposit(body: DepositIn, db: Session = Depends(get_db), user: str = Depe
     if amount is None or amount <= 0 or amount > MAX_AMOUNT:
         raise HTTPException(422, "Enter the slip amount, more than zero")
     slip = " ".join(body.slip_ref.split()).upper()
-    if db.query(Deposit).filter(func.upper(Deposit.slip_ref) == slip).first():
+    if db.query(Deposit).execution_options(all_stations=True).filter(func.upper(Deposit.slip_ref) == slip).first():
         raise HTTPException(409, f"Slip {slip} is already recorded")
-    row = next((r for r in ledger(db) if r["date"] == day.isoformat()), None)
-    if not row:
+    wanted = body.station_id or current_station.get()
+    rows = [r for r in ledger(db) if r["date"] == day.isoformat() and (wanted is None or r["station_id"] == wanted)]
+    if not rows:
         raise HTTPException(409, "There is no cash recorded for this business day")
+    if len(rows) > 1:
+        raise HTTPException(422, "Several stations have cash on this day: choose the station first")
+    row = rows[0]
     still = to_halalas(row["to_deposit"]) - to_halalas(row["deposited"])
     if amount >= still + ROUND_UP:
         raise HTTPException(422, f"The slip is more than the {to_sar(max(still, 0)):,.2f} SAR still to deposit for this day")
     d = Deposit(business_date=day, deposit_date=when, bank=" ".join(body.bank.split()), slip_ref=slip, amount=amount,
-                note=" ".join(body.note.split()), created_by=user)
+                note=" ".join(body.note.split()), created_by=user, station_id=row["station_id"])
     db.add(d)
     db.flush()
     audit.record(db, user, "created", "deposit", d.id,
                  f"Deposited {to_sar(amount):,.2f} for {day.isoformat()} at {d.bank} on {when.isoformat()}, slip {slip}")
     db.commit()
-    return next(r for r in ledger(db) if r["date"] == day.isoformat())
+    return next(r for r in ledger(db) if r["date"] == day.isoformat() and r["station_id"] == row["station_id"])
 
 
 @router.delete("/{did}")

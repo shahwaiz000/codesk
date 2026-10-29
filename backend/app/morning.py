@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from . import audit, dashboard, deposits, pos
+from . import audit, dashboard, deposits, pos, scope
 from .config import settings
 from .database import get_db
 from .deps import current_user, parse_day
@@ -63,7 +63,7 @@ def build(db: Session, today: date) -> dict:
                  for a in board["alerts"][:8]]
     if p.get("unpaired"):
         attention.insert(0, f"{p['unpaired']} POS machine(s) not matched to a driver yet")
-    due = [f"{date.fromisoformat(r['date']):%a %d %b}: {_m(r['pending'])} SAR ({r['status_text'].lower()})"
+    due = [scope.named(r, f"{date.fromisoformat(r['date']):%a %d %b}: {_m(r['pending'])} SAR ({r['status_text'].lower()})")
            for r in deposits.ledger(db, today) if r["status"] in ("due_today", "overdue", "short") and r["pending"] > 0]
 
     text = [f"CODesk morning summary, {today:%a %d %b %Y}", f"For {day:%A %d %b %Y}", ""]

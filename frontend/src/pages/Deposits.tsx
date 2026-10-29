@@ -4,6 +4,7 @@ import { Icon } from "../components/icons";
 import SlipReader from "../components/SlipReader";
 import { Badge, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
+import { useStation } from "../stations";
 import type { DepositDay, DepositLedger, DepositStatus, Slip } from "../types";
 
 const TONE: Record<DepositStatus, "leaf" | "brass" | "short" | "muted"> = {
@@ -25,12 +26,12 @@ function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; bank
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      await send("/deposits", "POST", { business_date: row.date, deposit_date: date, bank, slip_ref: slip, amount, note });
+      await send("/deposits", "POST", { business_date: row.date, deposit_date: date, bank, slip_ref: slip, amount, note, station_id: row.station_id ?? null });
       onSaved();
     } catch (err) { setError((err as Error).message); setBusy(false); }
   }
   return (
-    <Modal title={`Deposit the cash of ${fmtDay(row.date)}`} onClose={onClose} width="max-w-lg">
+    <Modal title={`Deposit the cash of ${fmtDay(row.date)}${row.station ? `, ${row.station}` : ""}`} onClose={onClose} width="max-w-lg">
       <form onSubmit={submit} className="space-y-4">
         <dl className="-mt-2 grid grid-cols-3 gap-3 rounded-lg bg-paper p-3 text-sm">
           <div><dt className="text-xs text-ink-faint">To deposit</dt><dd><Money value={row.to_deposit} className="font-semibold" /></dd></div>
@@ -104,6 +105,7 @@ function Slips({ row, onDelete }: { row: DepositDay; onDelete: (s: Slip) => void
 export default function Deposits() {
   const [version, setVersion] = useState(0);
   const { data, error, loading, reload } = useApi<DepositLedger>(`/deposits?count=30&v=${version}`);
+  const { station } = useStation();
   const [open, setOpen] = useState<string | null>(null);
   const [depositing, setDepositing] = useState<DepositDay | null>(null);
   const [deleting, setDeleting] = useState<Slip | null>(null);
@@ -121,7 +123,7 @@ export default function Deposits() {
 
   return (
     <>
-      <PageHeader title="Bank deposits" subtitle="Each day's cash goes to the bank on the next working day. Cash to deposit is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash." />
+      <PageHeader title="Bank deposits" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. Cash to deposit is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash.`} />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
           <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>div]:border-paper-line max-lg:[&>div:nth-child(-n+2)]:border-b max-lg:[&>div:nth-child(odd)]:border-r lg:[&>div:not(:last-child)]:border-r">
@@ -167,14 +169,16 @@ export default function Deposits() {
                 </tr></thead>
                 <tbody>
                   {rows.map((r) => {
-                    const expanded = open === r.date;
+                    const key = `${r.date}-${r.station_id ?? ""}`;
+                    const expanded = open === key;
                     const attention = r.status === "overdue" || r.status === "short";
                     return (
-                      <Fragment key={r.date}>
-                        <tr onClick={() => setOpen(expanded ? null : r.date)}
+                      <Fragment key={key}>
+                        <tr onClick={() => setOpen(expanded ? null : key)}
                           className={`cursor-pointer border-b border-paper-line hover:bg-paper/60 ${attention ? "bg-short-soft/40" : ""} ${expanded ? "bg-paper/80" : ""}`}>
                           <td className="px-5 py-3">
                             <span className="font-medium">{fmtDay(r.date)}</span>
+                            {!station && r.station && <span className="ml-2 inline-flex items-center gap-1 align-middle text-xs text-ink-soft"><Icon name="pin" className="h-3 w-3 text-brass-dark" />{r.station}</span>}
                             <span className="block text-xs text-ink-faint">Due {fmtDay(r.due_on)}{r.slips.length > 1 ? `, ${r.slips.length} slips` : ""}</span>
                           </td>
                           <td className="px-3 py-3 text-right"><Money value={r.cash_received} /></td>

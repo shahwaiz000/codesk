@@ -56,7 +56,7 @@ def _driver(db: Session, text: str) -> Driver:
 
 def t_day_summary(db: Session, args: dict) -> dict:
     day = _day(args["date"])
-    rows = {r["date"]: r for r in deposits.ledger(db)}
+    rows = {r["date"]: r for r in deposits.by_day(deposits.ledger(db))}
     f = dashboard.day_figures(db, day, rows)
     return {"date": day.isoformat(), "weekday": f"{day:%A}", **{k: f[k] for k in (
         "cash_received", "pos_system", "pos_terminal", "pos_difference", "pos_differences", "total_collected", "orders",
@@ -67,7 +67,7 @@ def t_period(db: Session, args: dict) -> dict:
     start, end = _period(args)
     cash = dict(db.query(Collection.business_date, func.sum(Collection.cash_received))
                 .filter(Collection.business_date.between(start, end)).group_by(Collection.business_date))
-    rows = {r["date"]: r for r in deposits.ledger(db)}
+    rows = {r["date"]: r for r in deposits.by_day(deposits.ledger(db))}
     days = []
     for d in sorted(cash):
         _, p = pos.day_summary(db, d)
@@ -135,6 +135,18 @@ def t_drivers(db: Session, args: dict) -> dict:
                         for d in db.query(Driver).order_by(Driver.code)]}
 
 
+def t_stations(db: Session, args: dict) -> dict:
+    from . import stations
+    from .scope import current_station
+    if current_station.get() is not None:
+        return {"note": "Only one station is being looked at; switch to All stations to compare stations"}
+    day = _day(args.get("date") or (db.query(func.max(Collection.business_date)).scalar() or date.today()).isoformat())
+    ov = stations.overview(date_=day.isoformat(), db=db)
+    return {"date": ov["date"], "totals": ov["totals"], "stations": [
+        {k: s[k] for k in ("code", "name", "region", "drivers", "handed_over", "cash_received", "pos_system", "paid_out",
+                           "to_deposit", "deposit_status_text", "cash_on_hand", "late_days", "late_amount")} for s in ov["stations"]]}
+
+
 def _fn(name, description, props=None, required=()):
     return {"type": "function", "function": {"name": name, "description": description,
             "parameters": {"type": "object", "properties": props or {}, "required": list(required)}}}
@@ -153,6 +165,9 @@ TOOLS = {
                                 "limit": {"type": "integer"}, **PERIOD}, ["metric"])),
     "open_items": (t_open_items, _fn("open_items", "What needs attention now: deposits overdue or short, unexplained POS differences, unusual amounts, old advances.")),
     "drivers": (t_drivers, _fn("drivers", "The list of drivers with their IDs, names and hubs.")),
+    "stations": (t_stations, _fn("stations", "Every station (warehouse) side by side for one day: cash, POS, paid out, deposit status, "
+                                 "cash still on hand and late deposits. Use it to compare stations or regions.",
+                                 {"date": {"type": "string", "description": "YYYY-MM-DD (default: the latest business day)"}})),
 }
 
 
@@ -160,6 +175,7 @@ def system_prompt(db: Session) -> str:
     latest = db.query(func.max(Collection.business_date)).scalar()
     return (f"You are Ask CODesk, the assistant of a delivery company's cash-on-delivery finance desk in Saudi Arabia. "
             f"Today is {date.today():%A %d %B %Y}. The latest business day with data is {latest.isoformat() if latest else 'none'}. "
+            "The company has stations (warehouses) in many Saudi cities; each deposits its own cash. "
             "Friday is the weekly day off; each day's cash goes to the bank on the next working day; amounts are in SAR. "
             "Answer ONLY from the results of your tools: call them to get every figure, never guess or invent a number. "
             "If the tools cannot answer, say so. Keep answers short and clear, with amounts written like 1,234.50 SAR, "

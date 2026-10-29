@@ -3,13 +3,17 @@ import { Icon } from "../components/icons";
 import ImportDialog, { PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, send, useApi } from "../lib";
+import { byRegion, useStation } from "../stations";
 import type { Driver } from "../types";
 
-type Draft = { code: string; name: string; phone: string; hub: string; pos_terminal: string };
-const BLANK: Draft = { code: "", name: "", phone: "", hub: "", pos_terminal: "" };
+type Draft = { code: string; name: string; phone: string; hub: string; pos_terminal: string; station_id: string };
+const BLANK: Draft = { code: "", name: "", phone: "", hub: "", pos_terminal: "", station_id: "" };
 
 function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null; hubs: string[]; onClose: () => void; onSaved: () => void }) {
-  const [draft, setDraft] = useState<Draft>(driver ? { code: driver.code, name: driver.name, phone: driver.phone, hub: driver.hub, pos_terminal: driver.pos_terminal } : BLANK);
+  const { station, stations } = useStation();
+  const [draft, setDraft] = useState<Draft>(driver
+    ? { code: driver.code, name: driver.name, phone: driver.phone, hub: driver.hub, pos_terminal: driver.pos_terminal, station_id: driver.station_id ? String(driver.station_id) : "" }
+    : { ...BLANK, station_id: station ? String(station.id) : "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof Draft) => (e: { target: { value: string } }) => setDraft((d) => ({ ...d, [k]: e.target.value }));
@@ -18,8 +22,9 @@ function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null;
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      if (driver) await send(`/drivers/${driver.id}`, "PATCH", { name: draft.name, phone: draft.phone, hub: draft.hub, pos_terminal: draft.pos_terminal });
-      else await send("/drivers", "POST", draft);
+      const station_id = draft.station_id ? Number(draft.station_id) : null;
+      if (driver) await send(`/drivers/${driver.id}`, "PATCH", { name: draft.name, phone: draft.phone, hub: draft.hub, pos_terminal: draft.pos_terminal, station_id });
+      else await send("/drivers", "POST", { ...draft, station_id });
       onSaved();
     } catch (err) { setError((err as Error).message); setBusy(false); }
   }
@@ -33,6 +38,15 @@ function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null;
           <label className="block text-sm font-medium">Full name
             <input className="field" value={draft.name} onChange={set("name")} /></label>
         </div>
+        <label className="block text-sm font-medium">Station
+          <select className="field" value={draft.station_id} onChange={set("station_id")}>
+            <option value="">Choose the station</option>
+            {byRegion(stations.filter((s) => s.active || String(s.id) === draft.station_id)).map(([region, list]) => (
+              <optgroup key={region} label={region}>{list.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}</optgroup>
+            ))}
+          </select>
+          {driver && driver.station_id && String(driver.station_id) !== draft.station_id && (
+            <span className="mt-1 block text-xs font-normal text-ink-faint">His past handovers stay with {driver.station}; new ones go to the new station.</span>)}</label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm font-medium">Hub
             <input className="field" list="hub-list" value={draft.hub} onChange={set("hub")} />
@@ -58,12 +72,14 @@ function DriverForm({ driver, hubs, onClose, onSaved }: { driver: Driver | null;
 const DRIVER_PREVIEW = [
   { label: "Driver ID", cell: (r: PreviewRow) => <span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> },
   { label: "Name", cell: (r: PreviewRow) => <>{r.driver_name as string}{r.inactive ? <span className="ml-1.5 text-xs text-ink-faint">(inactive)</span> : null}</> },
+  { label: "Station", cell: (r: PreviewRow) => <span className="text-ink-soft">{(r.station as string) || "-"}</span> },
   { label: "Hub", cell: (r: PreviewRow) => <span className="text-ink-soft">{(r.hub as string) || "-"}</span> },
   { label: "POS terminal", cell: (r: PreviewRow) => <span className="num text-ink-soft">{(r.terminal as string) ?? "-"}</span> },
 ];
 
 export default function Drivers() {
   const { data, error, loading, reload } = useApi<Driver[]>("/drivers");
+  const { station } = useStation();
   const [query, setQuery] = useState("");
   const [hub, setHub] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -94,7 +110,7 @@ export default function Drivers() {
 
   return (
     <>
-      <PageHeader title="Drivers" subtitle="The driver IDs every collection, POS check and expense is matched against. Shortages and open advances cover all recorded days.">
+      <PageHeader title="Drivers" subtitle={`The driver IDs every collection, POS check and expense is matched against${station ? `, at ${station.name}` : ", at every station"}. Shortages and open advances cover all recorded days.`}>
         <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import drivers</button>
         <button onClick={() => setEditing("new")} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Add driver</button>
       </PageHeader>
@@ -148,6 +164,7 @@ export default function Drivers() {
                   <thead>
                     <tr className="border-b border-paper-line text-left text-xs text-ink-faint">
                       <th className="px-5 py-2.5 font-medium">Driver</th>
+                      {!station && <th className="px-3 py-2.5 font-medium">Station</th>}
                       <th className="px-3 py-2.5 font-medium">Hub</th>
                       <th className="px-3 py-2.5 font-medium">POS terminal</th>
                       <th className="px-3 py-2.5 font-medium">Last handover</th>
@@ -169,6 +186,9 @@ export default function Drivers() {
                             {!d.active && <Badge tone="muted">Inactive</Badge>}
                           </div>
                         </td>
+                        {!station && <td className="px-3 py-3">{d.station
+                          ? <span className="inline-flex items-center gap-1.5 text-ink-soft"><span className="num rounded bg-paper-deep px-1.5 py-0.5 text-[11px] font-semibold text-ink-soft">{d.station_code}</span>{d.station}</span>
+                          : <span className="text-xs text-brass-dark">Not set</span>}</td>}
                         <td className="px-3 py-3 text-ink-soft">{d.hub || "-"}</td>
                         <td className="num px-3 py-3 text-ink-soft">{d.pos_terminal || <span className="text-ink-faint">Not set</span>}</td>
                         <td className="px-3 py-3 text-ink-soft">{d.last_collection ? fmtDay(d.last_collection) : "None yet"}</td>
@@ -198,7 +218,7 @@ export default function Drivers() {
       {importing && (
         <ImportDialog day="" noDate title="Import drivers" endpoint="/drivers/import" templateUrl="/api/drivers/template"
           noun={["driver", "drivers"]} columns={DRIVER_PREVIEW}
-          intro="Upload your driver list as CSV or Excel. Each row needs the driver ID and name; hub, mobile and POS terminal ID are optional. Drivers already saved are updated, never doubled, and an empty cell never wipes a saved value."
+          intro="Upload your driver list as CSV or Excel. Each row needs the driver ID and name; station, hub, mobile and POS terminal ID are optional. A system report with a Site column puts each driver in his station, and a station not seen before is added. Drivers already saved are updated, never doubled, and an empty cell never wipes a saved value."
           onClose={() => setImporting(false)} onSaved={() => { setImporting(false); reload(); }} />
       )}
       {editing && (

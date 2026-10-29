@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import pos, unusual
+from . import pos, unusual, scope
 from .collections import day_totals
 from .database import get_db
-from .deposits import ledger
+from .deposits import ledger, by_day
 from .deps import parse_day
 from .models import Collection, Driver, Expense, ImportedFile, PosOrder, TerminalTotal
 from .money import to_sar
@@ -52,11 +52,11 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     day = parse_day(date_)
     today = date.today()
     all_deposits = ledger(db, today)
-    by_date = {r["date"]: r for r in all_deposits}
+    by_date = {r["date"]: r for r in by_day(all_deposits)}
     figures = day_figures(db, day, by_date)
     prev = previous_day_with_data(db, day)
     previous = day_figures(db, prev, by_date) if prev else None
-    active = db.query(Driver).filter(Driver.active.is_(True)).count()
+    active = scope.drivers(db).filter(Driver.active.is_(True)).count()
 
     # drivers with something wrong on this day
     people = {}
@@ -76,9 +76,9 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     for r in all_deposits:
         if r["status"] in ("overdue", "short", "over"):
             alerts.append({"kind": f"deposit_{r['status']}", "date": r["date"], "amount": r["pending"], "page": "/deposits",
-                           "text": {"overdue": "Cash not deposited, overdue",
-                                    "short": "Bank deposit short",
-                                    "over": "Deposit more than the cash"}[r["status"]]})
+                           "text": scope.named(r, {"overdue": "Cash not deposited, overdue",
+                                                   "short": "Bank deposit short",
+                                                   "over": "Deposit more than the cash"}[r["status"]])})
     since = today - timedelta(days=45)
     pos_days = [d for (d,) in db.query(PosOrder.business_date).filter(PosOrder.business_date >= since).distinct()]
     pos_days += [d for (d,) in db.query(Collection.business_date).filter(Collection.business_date >= since,

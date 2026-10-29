@@ -9,12 +9,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from . import audit
+from . import audit, stations
 from .collections import COLUMNS as HANDOVER_COLUMNS
 from .database import get_db
 from .deps import current_user
 from .files import FileProblem, clean_code, find_column, read_upload
 from .models import Driver
+from .scope import current_station
 from .terminals import TERMINAL_COLUMNS
 
 router = APIRouter(prefix="/api/drivers", tags=["drivers"])
@@ -23,11 +24,13 @@ CODE_OK = re.compile(r"^[A-Z0-9][A-Z0-9-]{1,19}$")  # the same rule as adding a 
 COLUMNS = {
     "driver": HANDOVER_COLUMNS["driver"],
     "name": ("drivername", "couriername", "daname", "deliveryagentname", "fullname", "name", "employeename"),
-    "hub": ("hub", "station", "branch", "area", "zone", "city"),
+    "hub": ("hub", "area", "zone"),
+    "site_code": ("sitecode", "stationcode", "warehousecode", "branchcode"),
+    "site": ("site", "sitename", "station", "stationname", "warehouse", "branch", "city"),
     "phone": ("mobile", "mobileno", "mobilenumber", "phone", "phoneno", "phonenumber", "contact"),
     "terminal": TERMINAL_COLUMNS["terminal"],
 }
-TEMPLATE = "Driver ID,Driver name,Hub,Mobile,POS terminal ID\nD-101,Example Driver,North Hub,0500000000,60311101\n"
+TEMPLATE = "Driver ID,Driver name,Station,Hub,Mobile,POS terminal ID\nD-101,Example Driver,Jeddah,North Hub,0500000000,60311101\n"
 FIELDS = ("name", "hub", "phone", "pos_terminal")
 
 
@@ -58,20 +61,23 @@ def _check(db: Session, df) -> list[dict]:
         hub = _text(r, cols["hub"])[:60]
         phone = clean_code(r[cols["phone"]]).replace(" ", "")[:20] if cols["phone"] else ""
         terminal = clean_code(r[cols["terminal"]]).replace(" ", "")[:30] if cols["terminal"] else ""
+        site = (_text(r, cols["site_code"]), _text(r, cols["site"]))
+        station = stations.match(db, *site) if any(site) else None
+        new_station = bool(any(site) and not station)
         if not code:
             problems.append("no driver ID")
         elif not CODE_OK.match(code):
             problems.append(f"driver ID '{code}' can only use letters, numbers and dashes")
         elif code in seen_codes:
             first = seen_codes[code]
-            if (name, terminal) == first[1]:  # an order report lists a driver once per order: that is fine
+            if (name, terminal, site) == first[1]:  # an order report lists a driver once per order: that is fine
                 out.append({"line": line, "status": "skipped", "problems": [f"already in this file, row {first[0]}"],
                             "date": None, "driver_code": code, "driver_name": name, "hub": hub, "phone": phone,
-                            "terminal": terminal or None, "inactive": False, "changes": [], "_values": {}})
+                            "terminal": terminal or None, "station": site[1] or site[0], "inactive": False, "changes": [], "_values": {}})
                 continue
             problems.append(f"driver repeated with different details, first on row {first[0]}")
         else:
-            seen_codes[code] = (line, (name, terminal))
+            seen_codes[code] = (line, (name, terminal, site))
         if len(name) < 2:
             problems.append("no driver name")
         elif len(name) > 80:
@@ -91,10 +97,14 @@ def _check(db: Session, df) -> list[dict]:
         if not problems and drv:
             # an empty cell never wipes what is already saved
             changes = [f for f in FIELDS if values[f] and getattr(drv, f) != values[f]]
+            if any(site) and (new_station or drv.station_id != station.id):
+                changes.append("station")
             status = "update" if changes else "same"
-        out.append({"line": line, "status": status, "problems": problems, "date": None, "driver_code": code or None,
+        notes = [f"new station {site[1] or site[0]} will be added"] if new_station and not problems else []
+        out.append({"line": line, "status": status, "problems": problems + notes, "date": None, "driver_code": code or None,
                     "driver_name": name, "hub": hub, "phone": phone, "terminal": terminal or None,
-                    "inactive": bool(drv and not drv.active), "changes": changes, "_values": values})
+                    "station": (station.name if station else site[1] or site[0]) or (drv.station.name if drv and drv.station else ""),
+                    "inactive": bool(drv and not drv.active), "changes": changes, "_values": values, "_site": site})
     return out
 
 
@@ -116,15 +126,19 @@ def run(db: Session, filename: str, data: bytes, commit: bool, user: str) -> dic
     if commit:
         added = updated = 0
         for r in rows:
-            v = r["_values"]
+            v = dict(r["_values"])
+            if r["status"] in ("new", "update"):
+                st = stations.find_or_add(db, *r["_site"], user=user) if any(r.get("_site") or ()) else None
+                v["station_id"] = st.id if st else None
             if r["status"] == "new":
-                d = Driver(code=r["driver_code"], **v)
+                d = Driver(code=r["driver_code"], **{**v, "station_id": v["station_id"] or current_station.get()})
                 db.add(d)
                 added += 1
             elif r["status"] == "update":
                 d = db.query(Driver).filter_by(code=r["driver_code"]).one()
-                before = "; ".join(f"{f}: {getattr(d, f)!r} -> {v[f]!r}" for f in r["changes"])
-                for f in r["changes"]:
+                fields = [f if f != "station" else "station_id" for f in r["changes"]]
+                before = "; ".join(f"{f}: {getattr(d, f)!r} -> {v[f]!r}" for f in fields)
+                for f in fields:
                     setattr(d, f, v[f])
                 db.flush()
                 audit.record(db, user, "updated", "driver", d.id, f"{d.code} (import {filename}): {before}")
@@ -134,6 +148,7 @@ def run(db: Session, filename: str, data: bytes, commit: bool, user: str) -> dic
             audit.record(db, user, "imported", "driver", None,
                          f"Driver import {filename}: {added} added, {updated} updated")
         db.commit()
+        stations.assign_missing(db)  # records saved before their driver had a station get it now
     counts = {k: sum(r["status"] == k for r in rows) for k in ("new", "update", "same", "skipped", "error")}
     clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
     return {"file": filename, "rows": clean, "counts": counts, "committed": commit, "saved": saved, "dates": []}

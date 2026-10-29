@@ -20,6 +20,8 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 ## What it does
 
+**Stations across the Kingdom.** The company works from 50+ warehouses, so CODesk starts with a station in every main Saudi city (about 60, grouped by region; rename, switch off or add your own on the **Stations** page). Pick a station at the top of the menu and every page shows only that station's drivers, handovers, POS, expenses and deposits, and every new record is saved under it. Pick **All stations** to see everything together: the Dashboard then adds a tile map of the regions (red = a deposit is late, gold = cash waiting for the bank, green = deposited) and a table of every station with cash. Each station deposits its own cash, so the deposits page has one line per station per day. A system report with a *Site Code* / *Site* column puts each driver in his station by itself, and a station not seen before is added. The filter lives in one place in the backend (a SQLAlchemy rule applied to every query), so no page can forget it.
+
 **Dashboard.** The chosen business day at a glance: total collected against the previous day, the cash and POS split, cash and POS differences, and the day's money from driver to bank written as one ledger line (received − paid out = to deposit − deposited = pending). A 30-day chart of cash and POS per day (click a bar to open that day), the drivers with a difference that day, and a *needs attention* list across all days: overdue or short deposits, unexplained POS differences and advances open for more than 14 days.
 
 **Collections.** Every driver's handover for the day, imported straight from the delivery system's order-level collection report (each driver's cash lines are added up into his expected cash) or entered one by one: expected cash from the system, cash counted at the desk, the exact difference, POS terminal total and the day total. Short drivers show in red, extra cash in brass, and drivers who have not handed over yet are listed with a one-click button. The form shows the difference while you type.
@@ -69,11 +71,11 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 108 backend tests (pytest) and 16 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 116 backend tests (pytest) and 17 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 
-Started on an empty database, the backend adds 12 fictional drivers and 30 working days of handovers, POS orders, expenses, advances and deposits, with these mistakes planted:
+Started on an empty database, the backend adds the station list and 12 fictional drivers at Jeddah, plus a few fictional drivers at Makkah and Riyadh so the all-stations view has something to show, and and 30 working days of handovers, POS orders, expenses, advances and deposits, with these mistakes planted:
 
 | Mistake | Where |
 |---|---|
@@ -156,4 +158,4 @@ docs/
 
 ## Not built yet
 
-Several users with roles (one owner account today), a branch or hub filter on the dashboard, partial recovery of an advance, a direct connection to a delivery system or bank (data comes in as files), and an Arabic interface.
+Several users with roles (one owner account today, who sees every station), partial recovery of an advance, a direct connection to a delivery system or bank (data comes in as files), and an Arabic interface.

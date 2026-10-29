@@ -54,7 +54,7 @@ function VanToBank({ deposited, late }: { deposited: boolean; late: boolean }) {
 
 /** The day's cash, big and friendly, with the van taking it to the bank. */
 function CashHero({ day, t }: { day: string; t: CollectionDay["totals"] }) {
-  const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1`).data?.rows?.find((r) => r.date === day);
+  const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1&days=true`).data?.rows?.find((r) => r.date === day);
   const shown = useCountUp(t.cash_received);
   const deposited = dep?.status === "deposited" || dep?.status === "over";
   const late = dep?.status === "overdue" || dep?.status === "short";

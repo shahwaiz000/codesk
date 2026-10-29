@@ -36,6 +36,18 @@ class LoginSession(Base):
     user: Mapped[User] = relationship()
 
 
+class Station(Base):
+    """A warehouse or station: its own drivers, its own cash desk and its own bank deposits."""
+    __tablename__ = "stations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(30), unique=True)   # e.g. JED or the system's Site Code
+    name: Mapped[str] = mapped_column(String(80))
+    city: Mapped[str] = mapped_column(String(60), default="")
+    region: Mapped[str] = mapped_column(String(60), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Driver(Base):
     __tablename__ = "drivers"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -46,6 +58,8 @@ class Driver(Base):
     pos_terminal: Mapped[str] = mapped_column(String(30), default="")  # the terminal ID of the driver's POS machine
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("stations.id"), nullable=True, index=True)
+    station: Mapped["Station | None"] = relationship()
 
 
 class Collection(Base):
@@ -53,6 +67,7 @@ class Collection(Base):
     __tablename__ = "collections"
     __table_args__ = (UniqueConstraint("business_date", "driver_id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("stations.id"), nullable=True, index=True)  # whose desk
     business_date: Mapped[date] = mapped_column(Date, index=True)
     driver_id: Mapped[int] = mapped_column(ForeignKey("drivers.id"))
     orders: Mapped[int] = mapped_column(Integer, default=0)          # delivered COD orders
@@ -74,6 +89,7 @@ class Expense(Base):
     Everything here reduces the cash to deposit for its business day."""
     __tablename__ = "expenses"
     id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("stations.id"), nullable=True, index=True)  # whose desk
     business_date: Mapped[date] = mapped_column(Date, index=True)
     driver_id: Mapped[int] = mapped_column(ForeignKey("drivers.id"))
     category: Mapped[str] = mapped_column(String(20))
@@ -92,6 +108,7 @@ class Deposit(Base):
     """A bank deposit of cash collected on one business day (a day can need more than one slip)."""
     __tablename__ = "deposits"
     id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("stations.id"), nullable=True, index=True)  # whose desk
     business_date: Mapped[date] = mapped_column(Date, index=True)  # the collection day this cash belongs to
     deposit_date: Mapped[date] = mapped_column(Date)
     bank: Mapped[str] = mapped_column(String(60))
@@ -106,6 +123,7 @@ class PosOrder(Base):
     """An order the delivery system shows as closed by POS (card) payment."""
     __tablename__ = "pos_orders"
     id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("stations.id"), nullable=True, index=True)  # whose desk
     order_no: Mapped[str] = mapped_column(String(40), unique=True)
     business_date: Mapped[date] = mapped_column(Date, index=True)
     driver_id: Mapped[int] = mapped_column(ForeignKey("drivers.id"))
@@ -167,6 +185,7 @@ class TerminalTotal(Base):
     __tablename__ = "terminal_totals"
     __table_args__ = (UniqueConstraint("business_date", "terminal"),)
     id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("stations.id"), nullable=True, index=True)  # whose desk
     business_date: Mapped[date] = mapped_column(Date, index=True)
     terminal: Mapped[str] = mapped_column(String(30))
     amount: Mapped[int] = mapped_column(Integer)

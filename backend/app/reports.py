@@ -18,7 +18,7 @@ from xml.sax.saxutils import escape
 from . import collections, pos
 from .config import settings
 from .database import get_db
-from .deposits import ledger
+from .deposits import ledger, by_day
 from .deps import current_user, parse_day
 from .expenses import CATEGORY_TEXT
 from .models import Collection, Deposit, Driver, Expense
@@ -35,7 +35,7 @@ def safe(text) -> str:
 
 def report_data(db: Session, first: date, last: date) -> dict:
     deposit_rows = [r for r in ledger(db) if first.isoformat() <= r["date"] <= last.isoformat()]
-    dep_by_day = {r["date"]: r for r in deposit_rows}
+    dep_by_day = {r["date"]: r for r in by_day(deposit_rows)}
     handovers = (db.query(Collection).join(Driver).filter(Collection.business_date.between(first, last))
                  .order_by(Collection.business_date, Driver.code).all())
     days = sorted({h.business_date for h in handovers} | {date.fromisoformat(r["date"]) for r in deposit_rows})

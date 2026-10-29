@@ -100,6 +100,9 @@ def auto_pair(db: Session, day: date, user: str) -> int:
     for m in free:
         if m.terminal in plan:
             m.driver_id, m.paired_by = plan[m.terminal]
+            drv = db.get(Driver, m.driver_id)
+            if drv is not None and drv.station_id:
+                m.station_id = drv.station_id  # a machine belongs to the station of the driver who used it
             how[m.paired_by] += 1
     if how:
         audit.record(db, user, "paired", "terminal", None,
@@ -148,6 +151,8 @@ def pair(machine_id: int, body: PairIn, db: Session = Depends(get_db), user: str
         if not d:
             raise HTTPException(404, "Driver not found")
         m.driver_id, m.paired_by = d.id, "hand"
+        if d.station_id:
+            m.station_id = d.station_id
         after = d.code
     db.flush()
     db.refresh(m)

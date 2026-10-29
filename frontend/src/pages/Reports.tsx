@@ -3,14 +3,14 @@ import { todayIso, useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
 import { ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
-import { fmtDay, send, useApi } from "../lib";
+import { fmtDay, send, useApi, withStation } from "../lib";
 import type { ReportPreview } from "../types";
 
 function Downloads({ base }: { base: string }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <a href={`${base}&format=xlsx`} className="btn-primary"><Icon name="download" className="h-4 w-4" />Excel workbook</a>
-      <a href={`${base}&format=pdf`} className="btn-quiet"><Icon name="download" className="h-4 w-4" />Printable PDF</a>
+      <a href={withStation(`${base}&format=xlsx`)} className="btn-primary"><Icon name="download" className="h-4 w-4" />Excel workbook</a>
+      <a href={withStation(`${base}&format=pdf`)} className="btn-quiet"><Icon name="download" className="h-4 w-4" />Printable PDF</a>
     </div>
   );
 }
@@ -115,7 +115,7 @@ function MorningSummary() {
         <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap gap-2">
             <button onClick={copy} className="btn-primary"><Icon name={copied ? "check" : "receipt"} className="h-4 w-4" />{copied ? "Copied" : "Copy text"}</button>
-            <a href="/api/morning/pdf" className="btn-quiet"><Icon name="download" className="h-4 w-4" />PDF</a>
+            <a href={withStation("/api/morning/pdf")} className="btn-quiet"><Icon name="download" className="h-4 w-4" />PDF</a>
           </div>
           <p className="text-xs text-ink-faint">Paste the text in WhatsApp or an email to your manager, or attach the PDF.</p>
           <div className="rounded-lg border border-paper-line p-4">

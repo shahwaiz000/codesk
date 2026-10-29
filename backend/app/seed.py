@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
-from .models import Collection, Deposit, Driver, Expense, PosOrder
+from .models import Collection, Deposit, Driver, Expense, PosOrder, Station
 
 DRIVERS = [
     ("D-101", "Faisal Al-Harbi", "North Hub"), ("D-102", "Imran Qureshi", "North Hub"),
@@ -68,16 +68,84 @@ def default_end_date(today: date | None = None) -> date:
     return d
 
 
+def _station(db: Session, code: str, name: str, region: str) -> Station:
+    s = db.query(Station).filter_by(code=code).first()
+    if not s:
+        s = Station(code=code, name=name, city=name, region=region)
+        db.add(s)
+        db.flush()
+    return s
+
+
+# two more fictional stations for the all-stations view: (station, region, drivers)
+MORE_STATIONS = [
+    (("MKH", "Makkah", "Makkah"), [("M-201", "Hamza Al-Qarni"), ("M-202", "Sohail Akhtar"), ("M-203", "Abdullah Al-Mutairi"),
+                                   ("M-204", "Waqar Younis"), ("M-205", "Nawaf Al-Sulami")]),
+    (("RUH", "Riyadh", "Riyadh"), [("R-301", "Khalid Al-Dosari"), ("R-302", "Zubair Hassan"), ("R-303", "Fahad Al-Qahtani"),
+                                   ("R-304", "Asad Mehmood"), ("R-305", "Sultan Al-Anazi"), ("R-306", "Tariq Jamil")]),
+]
+
+
+def seed_more_stations(db: Session, end: date | None = None) -> None:
+    """Fictional activity at two more stations, so the all-stations view has something to compare. Every day
+    agrees and is deposited, except the latest day (still to deposit) and one Riyadh day deposited late."""
+    if db.query(Driver).filter(Driver.code.like("M-%")).count():
+        return
+    rng = random.Random(7)
+    days = business_days(end or default_end_date())
+    order_no = 8_100_000
+    for (code, name, region), people in MORE_STATIONS:
+        st = _station(db, code, name, region)
+        drivers = []
+        for i, (dcode, dname) in enumerate(people):
+            d = Driver(code=dcode, name=dname, hub=name, station_id=st.id, pos_terminal=f"6{40 + len(drivers)}{code}{i}",
+                       phone=f"05{rng.randint(10_000_000, 99_999_999)}")
+            db.add(d)
+            drivers.append(d)
+        db.flush()
+        for pos, day in reversed(list(enumerate(days))):
+            cash_day = 0
+            for d in drivers:
+                cash = pos_amt = 0
+                n = rng.randint(10, 26)
+                for _ in range(n):
+                    value = rng.randint(70, 700) * 50
+                    order_no += rng.randint(1, 9)
+                    if rng.random() < 0.6:
+                        cash += value
+                    else:
+                        pos_amt += value
+                        db.add(PosOrder(order_no=f"ORD{order_no}", business_date=day, driver_id=d.id, amount=value,
+                                        created_by="demo", station_id=st.id))
+                db.add(Collection(business_date=day, driver_id=d.id, orders=n, expected_cash=cash, cash_received=cash,
+                                  pos_amount=pos_amt, pos_terminal=d.pos_terminal, created_by="demo", station_id=st.id))
+                cash_day += cash
+            spent = 0
+            for _ in range(rng.randint(0, 2)):
+                amount = rng.randint(40, 150) * 100
+                db.add(Expense(business_date=day, driver_id=rng.choice(drivers).id, category=rng.choice(["fuel", "travel", "toll"]),
+                               amount=amount, reference=f"RC-{rng.randint(10000, 99999)}", created_by="demo", station_id=st.id))
+                spent += amount
+            if pos == 0:
+                continue  # the latest day: cash still on hand
+            late = 2 if (code == "RUH" and pos == 6) else 1
+            db.add(Deposit(business_date=day, deposit_date=next_working_day(day, late), bank=BANKS[pos % 2],
+                           slip_ref=f"DS-{code}-{rng.randint(100000, 999999)}", amount=cash_day - spent,
+                           created_by="demo", station_id=st.id))
+    db.commit()
+
+
 def seed_demo(db: Session, end: date | None = None) -> None:
     """Fill an empty database. Does nothing if any driver exists."""
     if db.query(Driver).count():
         return
     rng = random.Random(2026)
     days = business_days(end or default_end_date())
+    home = _station(db, "JED", "Jeddah", "Makkah")  # the demo's main station
     by_code = {}
     for i, (code, name, hub) in enumerate(DRIVERS):
         drv = Driver(code=code, name=name, hub=hub, phone=f"05{rng.randint(10_000_000, 99_999_999)}",
-                     pos_terminal=f"6031{1101 + i}", active=code not in INACTIVE)
+                     pos_terminal=f"6031{1101 + i}", active=code not in INACTIVE, station_id=home.id)
         db.add(drv)
         by_code[code] = drv
     db.flush()
@@ -144,5 +212,5 @@ def seed_demo(db: Session, end: date | None = None) -> None:
         parts = [due // 2, due - due // 2] if pos == PLANTED["split_deposit"] else [due]
         for part in parts:
             db.add(Deposit(business_date=day, deposit_date=when, bank=bank, slip_ref=f"DS-{rng.randint(100000, 999999)}",
-                           amount=part, created_by="demo"))
+                           amount=part, created_by="demo", station_id=home.id))
     db.commit()

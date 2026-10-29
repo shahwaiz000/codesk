@@ -27,7 +27,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from . import ai, audit, deposits
+from . import scope, ai, audit, deposits
 from .config import settings
 from .database import get_db
 from .deps import current_user, parse_day
@@ -263,7 +263,7 @@ def check(fields: dict, db: Session) -> dict:
         if len(candidates) == 1:
             day = candidates[0]["date"]
             gap = round(total - candidates[0]["pending"], 2)
-            checks.append({"ok": True, "text": f"Matches the cash of {date.fromisoformat(day):%a %d %b} ({candidates[0]['pending']:,.2f})"
+            checks.append({"ok": True, "text": scope.named(candidates[0], f"Matches the cash of {date.fromisoformat(day):%a %d %b} ({candidates[0]['pending']:,.2f})")
                            + (f", rounded {gap:+,.2f}" if gap else "")})
         elif len(candidates) > 1:
             checks.append({"ok": False, "text": "More than one day has this amount: choose the day"})
@@ -464,6 +464,20 @@ class RecordIn(BaseModel):
     bank: str = Field(min_length=2, max_length=60)
     slip_ref: str = Field(min_length=2, max_length=60)
     amount: float | str
+    station_id: int | None = None
+
+
+def _station_for(db: Session, body: RecordIn) -> int | None:
+    """In the all-stations view, the station whose cash on that day has the slip's amount."""
+    if body.station_id or scope.station() is not None:
+        return body.station_id
+    try:
+        amount = to_halalas(body.amount)
+    except Exception:  # noqa: BLE001  the deposit check below gives the clear message
+        return None
+    rows = [r for r in deposits.ledger(db) if r["date"] == body.business_date and r["pending"] > 0]
+    fits = [r for r in rows if deposits.rounded(to_halalas(r["pending"]), amount)] or rows
+    return fits[0]["station_id"] if len(fits) == 1 else None
 
 
 @router.post("/{sid}/record")
@@ -473,7 +487,7 @@ def record(sid: int, body: RecordIn, db: Session = Depends(get_db), user: str = 
         raise HTTPException(404, "This slip is not waiting to be recorded")
     row = deposits.add_deposit(deposits.DepositIn(business_date=body.business_date, deposit_date=body.deposit_date,
                                                   bank=body.bank, slip_ref=body.slip_ref, amount=body.amount,
-                                                  note=f"read from {s.filename}"), db, user)
+                                                  station_id=_station_for(db, body), note=f"read from {s.filename}"), db, user)
     slip = next(x for x in row["slips"] if x["slip_ref"] == " ".join(body.slip_ref.split()).upper())
     s.status, s.deposit_id = "recorded", slip["id"]
     db.commit()

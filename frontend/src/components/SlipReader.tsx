@@ -30,7 +30,10 @@ function AiSetup({ ai }: { ai: AiStatus }) {
 }
 
 function Draft({ s, days, onDone }: { s: SlipDraft; days: DepositDay[]; onDone: () => void }) {
-  const [day, setDay] = useState(s.business_date ?? "");
+  const keyOf = (d: DepositDay) => `${d.date}|${d.station_id ?? ""}`;
+  const guess = days.filter((d) => d.date === s.business_date && d.pending > 0)
+    .sort((a, b) => Math.abs(a.pending - (s.total ?? 0)) - Math.abs(b.pending - (s.total ?? 0)))[0];
+  const [day, setDay] = useState(guess ? keyOf(guess) : "");
   const [when, setWhen] = useState(s.deposit_date ?? "");
   const [bank, setBank] = useState(s.bank);
   const [ref, setRef] = useState(s.slip_number);
@@ -47,7 +50,8 @@ function Draft({ s, days, onDone }: { s: SlipDraft; days: DepositDay[]; onDone: 
   }
   function submit(e: FormEvent) {
     e.preventDefault();
-    act(`/slips/${s.id}/record`, { business_date: day, deposit_date: when, bank, slip_ref: ref, amount });
+    const [business_date, sid] = day.split("|");
+    act(`/slips/${s.id}/record`, { business_date, station_id: sid ? Number(sid) : null, deposit_date: when, bank, slip_ref: ref, amount });
   }
 
   return (
@@ -104,7 +108,7 @@ function Draft({ s, days, onDone }: { s: SlipDraft; days: DepositDay[]; onDone: 
             <label className="block text-xs font-medium text-ink-soft lg:col-span-2">Cash of the day
               <select className="field" value={day} onChange={(e) => setDay(e.target.value)} required>
                 <option value="">Choose the day</option>
-                {open.map((d) => <option key={d.date} value={d.date}>{fmtDay(d.date)}: {fmtMoney(d.pending)} to deposit</option>)}
+                {open.map((d) => <option key={keyOf(d)} value={keyOf(d)}>{fmtDay(d.date)}{d.station ? ` ${d.station}` : ""}: {fmtMoney(d.pending)} to deposit</option>)}
               </select></label>
             <label className="block text-xs font-medium text-ink-soft">Deposited on
               <input type="date" className="field" value={when} onChange={(e) => setWhen(e.target.value)} required /></label>

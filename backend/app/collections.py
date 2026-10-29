@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, true
 from sqlalchemy.orm import Session
 
-from . import audit
+from . import audit, scope
 from .database import get_db
 from .deps import current_user, not_future, parse_day
 from .files import FileProblem, clean_code, find_column, read_date, read_upload
@@ -62,7 +62,7 @@ def list_day(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     rows = (db.query(Collection).join(Driver).filter(Collection.business_date == day)
             .order_by(Driver.code).all())
     done = {c.driver_id for c in rows}
-    missing = db.query(Driver).filter(Driver.active.is_(True), Driver.id.notin_(done) if done else true()).order_by(Driver.code).all()
+    missing = scope.drivers(db).filter(Driver.active.is_(True), Driver.id.notin_(done) if done else true()).order_by(Driver.code).all()
     return {"date": day.isoformat(), "rows": [row_dict(c) for c in rows], "totals": day_totals(rows),
             "missing": [{"id": d.id, "code": d.code, "name": d.name, "hub": d.hub} for d in missing]}
 

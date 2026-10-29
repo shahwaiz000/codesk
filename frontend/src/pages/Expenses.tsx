@@ -233,7 +233,7 @@ function PayEnvelopes({ labels, drivers }: { labels: string[]; drivers: number }
 
 /** The day's paid-out total, big, with how much of the day's cash it took. */
 function PaidOutHero({ day, t, drivers }: { day: string; t: ExpenseDay["totals"]; drivers: number }) {
-  const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1`).data?.rows?.find((r) => r.date === day);
+  const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1&days=true`).data?.rows?.find((r) => r.date === day);
   const shown = useCountUp(t.total);
   const cash = dep?.cash_received ?? 0;
   const share = cash ? Math.min(100, (t.total / cash) * 100) : 0;

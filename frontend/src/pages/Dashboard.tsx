@@ -7,6 +7,8 @@ import { Icon } from "../components/icons";
 import { Badge, ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, useApi } from "../lib";
 import type { Dashboard as Dash } from "../types";
+import StationBoard from "../components/StationBoard";
+import { useStation } from "../stations";
 
 /* Chart colors, checked for color-blind separation and contrast on white. */
 const CASH = "#1d7a55";
@@ -72,13 +74,15 @@ const ISSUE_TEXT = { cash_short: "Cash short", cash_over: "Cash over", terminal_
 
 export default function Dashboard() {
   const { day, setDay } = useBusinessDay();
+  const { station } = useStation();
   const { data, error, loading, reload } = useApi<Dash>(`/dashboard?date=${day}`);
   const f = data?.figures;
   const p = data?.previous ?? undefined;
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="The business day at a glance, and everything across all days that still needs you." />
+      <PageHeader title={station ? `${station.name} station` : "Dashboard"}
+        subtitle={station ? `The business day at ${station.name} at a glance, and everything there that still needs you.` : "The business day across every station at a glance, and everything across all days that still needs you."} />
       <DayPicker />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && f && (
         <>
@@ -108,6 +112,8 @@ export default function Dashboard() {
           </dl>
 
           <MoneyRoute f={f} activeDrivers={data.active_drivers} />
+
+          {!station && <StationBoard day={day} />}
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
             <div className="min-w-0 space-y-6">

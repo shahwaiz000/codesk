@@ -3,6 +3,7 @@ export interface AuthStatus { auth_enabled: boolean; needs_setup: boolean; user:
 export interface Driver {
   id: number; code: string; name: string; phone: string; hub: string; active: boolean; pos_terminal: string;
   last_collection: string | null; days_collected: number;
+  station_id: number | null; station: string; station_code: string;
   cash_shortage: number; open_advances: number; open_advance_count: number;
 }
 
@@ -64,7 +65,8 @@ export type DepositStatus = "deposited" | "not_due" | "due_today" | "overdue" | 
 export interface Slip { id: number; deposit_date: string; bank: string; slip_ref: string; amount: number; note: string; created_by: string }
 export interface DepositDay {
   date: string; due_on: string; cash_received: number; paid_out: number; returned: number; to_deposit: number;
-  deposited: number; pending: number; rounding?: number; status: DepositStatus; status_text: string; late: boolean; days_late: number; slips: Slip[];
+  deposited: number; pending: number; rounding?: number; status: DepositStatus;
+  station_id?: number | null; station?: string; station_code?: string; status_text: string; late: boolean; days_late: number; slips: Slip[];
 }
 export interface DepositLedger {
   rows: DepositDay[]; banks: string[]; today: string;
@@ -102,4 +104,17 @@ export interface Unusual {
 export interface AiStatus {
   engine: "local" | "gemini"; demo_mode: boolean; gemini_model: string; has_key: boolean; key_hint: string; ack: boolean;
   ready: boolean; reason: string;
+}
+
+export interface Station { id: number; code: string; name: string; city: string; region: string; active: boolean; drivers: number }
+export interface StationList { stations: Station[]; unassigned_drivers: number }
+export interface StationDay extends Station {
+  handed_over: number; cash_received: number; pos_system: number; pos_terminal: number; pos_difference: number; pos_open: number;
+  paid_out: number; to_deposit: number; deposited: number; pending: number; deposit_status: DepositStatus; deposit_status_text: string;
+  cash_on_hand: number; late_days: number; late_amount: number;
+}
+export interface StationOverview {
+  date: string; stations: StationDay[]; active_stations: number;
+  totals: { cash_received: number; pos_system: number; pos_terminal: number; paid_out: number; to_deposit: number; deposited: number;
+    pending: number; cash_on_hand: number; late_amount: number; late_days: number };
 }

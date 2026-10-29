@@ -3,10 +3,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Sent when the server says the login has ended, so the app can show the login page. */
 export const AUTH_LOST = "codesk-auth-lost";
 
+/* The station being looked at ("" = all stations). It is sent with every request, so the backend shows
+   and saves only that station's money; it is kept in this browser so the desk opens where it was left. */
+const STATION_KEY = "codesk-station";
+let station = (() => { try { return localStorage.getItem(STATION_KEY) ?? ""; } catch { return ""; } })();
+export const currentStation = () => station;
+export function rememberStation(id: string) {
+  station = id;
+  try { if (id) localStorage.setItem(STATION_KEY, id); else localStorage.removeItem(STATION_KEY); } catch { /* private window */ }
+}
+const stationHeader = (): Record<string, string> => (station ? { "X-Station": station } : {});
+/** A download link (PDF, Excel) for the station being looked at. */
+export const withStation = (url: string) => (station ? `${url}${url.includes("?") ? "&" : "?"}station=${station}` : url);
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, { headers: { "Content-Type": "application/json" }, ...init });
+    res = await fetch(`/api${path}`, { ...init, headers: { "Content-Type": "application/json", ...stationHeader(), ...(init?.headers ?? {}) } });
   } catch {
     throw new Error("Cannot reach the backend. Check that it is running on port 8000.");
   }
@@ -57,7 +70,7 @@ export function fmtWhen(isoTime: string | null | undefined): string {
 export async function upload<T>(path: string, form: FormData): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, { method: "POST", body: form });
+    res = await fetch(`/api${path}`, { method: "POST", body: form, headers: stationHeader() });
   } catch {
     throw new Error("Cannot reach the backend. Check that it is running on port 8000.");
   }
