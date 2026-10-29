@@ -119,3 +119,19 @@ def test_a_busy_google_is_tried_again_then_the_lighter_model(client, cloud, monk
     monkeypatch.setattr(ai, "_post", always_busy)
     with SessionLocal() as db, pytest.raises(ai.AiProblem, match="busy right now"):
         ai.chat(db, [{"role": "user", "content": "hi"}])
+
+
+def test_a_slow_answer_counts_as_busy(monkeypatch):
+    import socket
+    import urllib.request
+    def slow(*a, **k):
+        raise socket.timeout("timed out")
+    monkeypatch.setattr(urllib.request, "urlopen", slow)
+    with pytest.raises(ai._Busy):
+        ai._post("http://x", {}, {}, 1, True)
+    def offline(*a, **k):
+        import urllib.error
+        raise urllib.error.URLError("getaddrinfo failed")
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    with pytest.raises(ai.AiProblem, match="getaddrinfo failed"):
+        ai._post("http://x", {}, {}, 1, True)

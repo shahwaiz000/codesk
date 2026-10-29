@@ -7,6 +7,7 @@ Privacy rule, enforced here and not only written on the screen: Google may use w
 tier to improve its models, so the cloud engine only works while CODesk runs in demo mode (the fictional
 drivers and days). Real company data never goes to the cloud; with real data, the local engine is used."""
 import json
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -93,8 +94,14 @@ def _post(url: str, headers: dict, body: dict, timeout: float, cloud: bool) -> d
         if e.code == 429:
             raise AiProblem("The free AI limit is reached for now. Wait a minute and try again")
         raise AiProblem(f"The AI could not answer: {why or e.code}")
-    except (urllib.error.URLError, OSError):
-        raise AiProblem("The AI cannot be reached. " + ("Check the internet connection" if cloud else "Start Ollama, then try again"))
+    except (TimeoutError, socket.timeout):
+        raise _Busy("no answer in time")
+    except (urllib.error.URLError, OSError) as e:
+        reason = getattr(e, "reason", e)
+        if isinstance(reason, (TimeoutError, socket.timeout)):
+            raise _Busy("no answer in time")
+        raise AiProblem("The AI cannot be reached. " + ("Check the internet connection" if cloud else "Start Ollama, then try again")
+                        + f" ({str(reason)[:120]})")
     try:
         return answer["choices"][0]["message"]
     except (KeyError, IndexError, TypeError):
