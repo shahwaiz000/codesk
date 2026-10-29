@@ -18,11 +18,6 @@ function Figure({ label, children, foot }: { label: string; children: React.Reac
   );
 }
 
-const STATUS_TONE: Record<string, string> = {
-  deposited: "bg-leaf text-white", overdue: "bg-short text-white", short: "bg-short text-white", over: "bg-brass-glow text-ledger-950",
-  due_today: "bg-brass-glow text-ledger-950", not_due: "bg-white/15 text-white", nothing: "bg-white/15 text-white",
-};
-
 /** Counts up to the value when it changes, so the day's cash "arrives" on screen. Still for reduced motion. */
 function useCountUp(value: number, ms = 900) {
   const [shown, setShown] = useState(value);
@@ -42,110 +37,81 @@ function useCountUp(value: number, ms = 900) {
   return shown;
 }
 
-/** A guilloche rosette, the engraved flower printed on banknotes. */
-function Rosette({ className = "" }: { className?: string }) {
+/** The van on its way to the bank: still on the road until the day's cash is deposited, parked at the bank after. */
+function VanToBank({ deposited, late }: { deposited: boolean; late: boolean }) {
+  const [moved, setMoved] = useState(false);
+  useEffect(() => { const id = requestAnimationFrame(() => setMoved(true)); return () => cancelAnimationFrame(id); }, []);
+  const x = deposited ? 176 : 95; // parked just before the bank door, or halfway down the road
   return (
-    <svg aria-hidden="true" viewBox="-100 -100 200 200" className={className} fill="none" stroke="currentColor">
-      {Array.from({ length: 18 }, (_, i) => (
-        <ellipse key={i} rx="92" ry="34" transform={`rotate(${i * 10})`} strokeWidth="0.55" />
-      ))}
-      {Array.from({ length: 12 }, (_, i) => (
-        <ellipse key={`b${i}`} rx="56" ry="20" transform={`rotate(${i * 15 + 7})`} strokeWidth="0.5" />
-      ))}
-      <circle r="40" strokeWidth="0.8" /><circle r="44" strokeWidth="0.4" />
+    <svg viewBox="0 0 520 270" className="h-full w-full" preserveAspectRatio="xMidYMid slice" role="img"
+      aria-label={deposited ? "The van has reached the bank: the cash is deposited" : "The van is on its way to the bank: the cash is not deposited yet"}>
+      <rect width="520" height="270" fill="#eef5f0" />
+      <circle cx="430" cy="70" r="110" fill="#e2f1e9" />
+      <g fill="#fff" opacity=".9"><ellipse cx="120" cy="62" rx="34" ry="11" /><ellipse cx="146" cy="54" rx="22" ry="12" /><ellipse cx="270" cy="96" rx="26" ry="8" /></g>
+      <path d="M0 214H520" stroke="#cfe0d7" strokeWidth="22" />
+      <path d="M0 214H520" stroke="#fff" strokeWidth="2" strokeDasharray="14 12" />
+      {/* the bank */}
+      <g transform="translate(372 96)">
+        <path d="M0 34 60 6l60 28Z" fill="#0f2e22" />
+        <rect x="6" y="34" width="108" height="10" fill="#173d2f" />
+        <g fill="#21503e"><rect x="14" y="46" width="12" height="54" /><rect x="40" y="46" width="12" height="54" /><rect x="68" y="46" width="12" height="54" /><rect x="94" y="46" width="12" height="54" /></g>
+        <rect y="100" width="120" height="12" fill="#0f2e22" />
+        <text x="60" y="27" fontSize="11" textAnchor="middle" fill="#e2b55a" fontWeight="700">BANK</text>
+        {deposited && (
+          <g transform="translate(96 -10)"><circle r="15" fill="#1d7a55" stroke="#fff" strokeWidth="3" /><path d="m-6 0 4 4 8-8" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" /></g>
+        )}
+      </g>
+      {/* the van */}
+      <g style={{ transform: `translate(${moved ? x : -220}px, 140px)`, transition: "transform 1.6s cubic-bezier(.22,.8,.3,1)" }} className="motion-reduce:!transition-none">
+        <rect y="12" width="130" height="62" rx="8" fill="#1d7a55" />
+        <path d="M130 30h34l22 22v22h-56z" fill="#145c3f" />
+        <path d="M138 36h22l14 16h-36z" fill="#cfe0d7" />
+        <text x="64" y="50" fontSize="15" textAnchor="middle" fill="#fff" fontWeight="800">CODesk</text>
+        <circle cx="34" cy="76" r="14" fill="#16211c" /><circle cx="34" cy="76" r="6" fill="#9fbcae" />
+        <circle cx="156" cy="76" r="14" fill="#16211c" /><circle cx="156" cy="76" r="6" fill="#9fbcae" />
+        {!deposited && (
+          <g transform="translate(40 -28)">
+            <path d="M10 10q20-16 40 0l6 34H4z" fill={late ? "#b8402e" : "#e2b55a"} />
+            <path d="M22 4q8-10 16 0" stroke={late ? "#922f20" : "#86590c"} strokeWidth="3" fill="none" />
+            <text x="30" y="36" fontSize="13" textAnchor="middle" fill={late ? "#fff" : "#0f2e22"} fontWeight="800">SAR</text>
+          </g>
+        )}
+        {!deposited && <g stroke="#9fbcae" strokeWidth="3" strokeLinecap="round"><path d="M-18 40h-30M-10 56h-46M-22 24h-22" /></g>}
+      </g>
     </svg>
   );
 }
 
-const STEP_DONE = { deposited: 3, over: 3, short: 2, overdue: 2, due_today: 2, not_due: 1, nothing: 0 } as Record<string, number>;
-
-/** The day's cash printed as a banknote: big enough to read across the room, with its way to the bank under it. */
+/** The day's cash, big and friendly, with the van taking it to the bank. */
 function CashHero({ day, t }: { day: string; t: CollectionDay["totals"] }) {
   const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1`).data?.rows?.find((r) => r.date === day);
   const shown = useCountUp(t.cash_received);
-  const cashShare = t.total ? Math.round((t.cash_received / t.total) * 100) : 0;
-  const serial = day.split("-").join("");
-  const reached = dep ? STEP_DONE[dep.status] ?? 1 : 1;
-  const stops = [
-    { label: "Collected", value: t.cash_received },
-    { label: "Paid out", value: dep ? -dep.paid_out : 0 },
-    { label: "To the bank", value: dep?.to_deposit ?? t.cash_received },
-  ];
+  const deposited = dep?.status === "deposited" || dep?.status === "over";
+  const late = dep?.status === "overdue" || dep?.status === "short";
   return (
-    <section aria-label="Cash collected" className="relative mb-6 overflow-hidden rounded-panel bg-ledger-900 p-4 text-white shadow-pop sm:p-6">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
-        {/* the note */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-ledger-800 via-ledger-900 to-ledger-950 p-1.5">
-          <div className="relative h-full rounded-lg border border-brass-glow/40 p-5 sm:p-7"
-            style={{ backgroundImage: "repeating-linear-gradient(115deg, rgba(226,181,90,.05) 0 1px, transparent 1px 7px)" }}>
-            <div className="pointer-events-none absolute inset-1.5 rounded-md border border-dashed border-brass-glow/20" />
-            <Rosette className="pointer-events-none absolute -right-10 top-1/2 h-64 w-64 -translate-y-1/2 text-brass-glow/25 sm:right-4 sm:h-72 sm:w-72" />
-            <div className="pointer-events-none absolute right-[3.25rem] top-1/2 hidden -translate-y-1/2 flex-col items-center text-center sm:right-[7.4rem] sm:flex">
-              <span className="num text-3xl font-semibold text-brass-glow">{t.drivers}</span>
-              <span className="text-[10px] uppercase tracking-[0.2em] text-ledger-300">drivers</span>
-            </div>
-
-            <div className="relative flex items-start justify-between gap-3">
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-brass-glow">
-                <span className="grid h-6 w-6 place-items-center rounded-full border border-brass-glow/60 text-[10px] tracking-normal">CD</span>
-                Cash collected
-              </p>
-              <p className="num text-xs uppercase tracking-[0.18em] text-ledger-300">{fmtDay(day)}</p>
-            </div>
-
-            <p className="num relative mt-6 text-[2.6rem] font-semibold leading-none tracking-tight sm:text-6xl lg:text-7xl">
-              <span className="whitespace-nowrap">{fmtMoney(shown)}</span>{" "}
-              <span className="inline-block whitespace-nowrap align-baseline text-lg font-normal text-brass-glow sm:ml-1 sm:text-2xl">SAR</span>
-            </p>
-
-            {/* cash and card, as one ribbon */}
-            <div className="relative mt-6 max-w-sm">
-              <div className="flex h-2 overflow-hidden rounded-full bg-white/10" role="img" aria-label={`Cash ${cashShare}% of the money collected, card ${100 - cashShare}%`}>
-                <span className="bg-brass-glow" style={{ width: `${cashShare}%` }} />
-                <span className="bg-ledger-300/60" style={{ width: `${100 - cashShare}%` }} />
-              </div>
-              <p className="mt-2 flex justify-between text-xs text-ledger-300">
-                <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-brass-glow" />Cash {cashShare}%</span>
-                <span>Card {100 - cashShare}%<span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-ledger-300/60" /></span>
-              </p>
-            </div>
-
-            <p className="num relative mt-6 text-[10px] uppercase tracking-[0.25em] text-ledger-300/80">
-              Nº {serial} · {t.orders} orders closed
-            </p>
-          </div>
-        </div>
-
-        {/* its way to the bank */}
-        <div className="flex flex-col justify-between gap-5">
-          <ol className="relative space-y-4 pl-7" aria-label="On its way to the bank">
-            <span aria-hidden="true" className="absolute bottom-3 left-[9px] top-3 border-l-2 border-dashed border-brass-glow/40" />
-            {stops.map((st, i) => (
-              <li key={st.label} className="relative">
-                <span aria-hidden="true" className={`absolute -left-7 top-1 grid h-5 w-5 place-items-center rounded-full border-2 ${i < reached ? "border-brass-glow bg-brass-glow text-ledger-950" : "border-brass-glow/50 bg-ledger-900"}`}>
-                  {i < reached && <Icon name="check" className="h-3 w-3" />}
-                </span>
-                <p className="text-xs text-ledger-300">{st.label}</p>
-                <p className="num text-lg font-semibold">{fmtMoney(st.value)}</p>
-              </li>
-            ))}
-            <li className="relative">
-              <span aria-hidden="true" className="absolute -left-7 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-white text-ledger-900">
-                <Icon name="bank" className="h-3 w-3" />
-              </span>
-              {dep ? (
-                <p className="text-sm">
-                  <span className={`mr-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_TONE[dep.status] ?? "bg-white/15 text-white"}`}>{dep.status_text}</span>
-                  <span className="text-xs text-ledger-300">due {fmtDay(dep.due_on)}</span>
-                </p>
-              ) : <p className="text-xs text-ledger-300">Bank</p>}
-            </li>
-          </ol>
-          <dl className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4 text-sm">
-            <div><dt className="text-xs text-ledger-300">POS (card)</dt><dd className="num font-semibold">{fmtMoney(t.pos_amount)}</dd></div>
-            <div><dt className="text-xs text-ledger-300">Total</dt><dd className="num font-semibold">{fmtMoney(t.total)}</dd></div>
-          </dl>
-        </div>
+    <section aria-label="Cash collected" className="mb-6 grid overflow-hidden rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(22,33,28,.06),0_20px_40px_-24px_rgba(22,33,28,.35)] lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+      <div className="min-w-0 p-6 sm:p-9">
+        <p className="text-sm font-semibold text-ink-soft">Cash collected · {fmtDay(day)}</p>
+        <p className="num mt-2 text-[2.75rem] font-extrabold leading-none tracking-tight text-ledger-900 sm:text-7xl">
+          <span className="whitespace-nowrap">{fmtMoney(shown)}</span>
+          <span className="ml-2 inline-block whitespace-nowrap text-xl font-semibold text-brass sm:text-2xl">SAR</span>
+        </p>
+        <p className="mt-4 text-[15px] text-ink-soft">
+          {t.drivers} drivers · {t.orders} orders ·{" "}
+          {!dep ? "next stop: bank" : deposited
+            ? <span className="font-semibold text-leaf-dark">deposited in the bank</span>
+            : late ? <span className="font-semibold text-short">{dep.status_text.toLowerCase()}, was due {fmtDay(dep.due_on)}</span>
+            : <>next stop: <span className="font-semibold text-leaf">bank, due {fmtDay(dep.due_on)}</span></>}
+        </p>
+        <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t border-paper-line pt-5 text-sm">
+          <div><dt className="text-xs text-ink-faint">POS (card)</dt><dd className="num font-semibold">{fmtMoney(t.pos_amount)}</dd></div>
+          <div><dt className="text-xs text-ink-faint">Total collected</dt><dd className="num font-semibold">{fmtMoney(t.total)}</dd></div>
+          {dep && <div><dt className="text-xs text-ink-faint">Paid out</dt><dd className="num font-semibold">{fmtMoney(dep.paid_out)}</dd></div>}
+          {dep && <div><dt className="text-xs text-ink-faint">To the bank</dt><dd className="num font-semibold text-leaf-dark">{fmtMoney(dep.to_deposit)}</dd></div>}
+        </dl>
+      </div>
+      <div className="h-52 min-w-0 sm:h-64 lg:h-auto lg:min-h-[17rem]">
+        <VanToBank key={`${day}-${deposited}`} deposited={deposited} late={late} />
       </div>
     </section>
   );
