@@ -32,7 +32,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 **Two ways a desk works.** On Settings you choose how your cash desk works. If orders are closed only when the driver pays in full (unpaid orders stay pending), Collections simply shows each driver's cash and card money from the system report, with nothing to count. If orders can be closed before the money is counted, Collections compares the cash counted at the desk with the system's cash and shows short drivers in red.
 
-**Expenses and advances.** Fuel, tolls, parking, travel, maintenance or other expenses, and advances, paid to a driver from the day's cash with a receipt number. Open advances show how many days they have been open. The desk's own expense sheet (date, driver ID, name, amount) can be imported as it is, with or without a heading row; a driver not in CODesk yet is added from his name, and rows already saved are skipped. An advance is recovered either from salary (nothing comes back to the desk) or as cash returned at the desk, which is added to that day's deposit.
+**Expenses and advances.** Fuel, tolls, parking, travel, maintenance or other expenses, and advances, paid to a driver from the day's cash with a receipt number. Open advances show how many days they have been open. The desk's own expense sheet (date, driver ID, name, amount) can be imported as it is, with or without a heading row (rows without a type are saved as Expense); a driver not in CODesk yet is added from his name, and rows already saved are skipped. An advance is recovered either from salary (nothing comes back to the desk) or as cash returned at the desk, which is added to that day's deposit.
 
 ![Expenses and advances](docs/screenshots/expenses.png)
 

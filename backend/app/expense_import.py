@@ -1,7 +1,7 @@
 """Import the day's driver expenses from the desk's own sheet: date, driver ID, driver name, amount.
 
 The category column is optional (salary, incentive, final settlement, fuel, travel... in the desk's own
-words); without it a row is saved as Other and can be changed on the page. A driver who is not in CODesk yet is added from the name in the sheet, so a driver who had no
+words); without it a row is saved as a plain Expense. A driver who is not in CODesk yet is added from the name in the sheet, so a driver who had no
 collection that day can still be paid. A row already saved (same day, driver, category and amount) is
 skipped, so importing the same sheet twice never pays twice."""
 import re
@@ -83,7 +83,7 @@ def _check(db: Session, df, default_day: date | None) -> list[dict]:
     seen = Counter()
     out = []
     for i, r in df.iterrows():
-        line, problems, notes = i + 2 + above, [], []
+        line, problems, notes, r_old = i + 2 + above, [], [], None
         cell = lambda k: " ".join(str(r[cols[k]]).split()) if cols[k] else ""  # noqa: E731
         code, name, raw = clean_code(r[cols["driver"]]), cell("name"), cell("amount")
         if not code and not raw:
@@ -104,7 +104,7 @@ def _check(db: Session, df, default_day: date | None) -> list[dict]:
         elif amount <= 0 or amount > MAX_AMOUNT:
             problems.append("amount must be more than 0")
         written = cell("category")
-        category = _category(written) if written else "other"
+        category = _category(written) if written else "expense"
         if category is None:
             category = "other"
             notes.append(f"'{written}' saved as Other")
@@ -127,12 +127,21 @@ def _check(db: Session, df, default_day: date | None) -> list[dict]:
             key = (day, code, category, amount)
             seen[key] += 1
             if drv:
-                saved = db.query(Expense).filter_by(business_date=day, driver_id=drv.id, category=category, amount=amount).count()
-                if seen[key] <= saved:
-                    status, notes = "same", ["already saved"]
+                kinds = [category] if written else ["expense", "travel", "other"]  # an earlier import without a type
+                saved = (db.query(Expense).filter(Expense.business_date == day, Expense.driver_id == drv.id,
+                                                  Expense.amount == amount, Expense.category.in_(kinds))
+                         .order_by(Expense.id).all())
+                if seen[key] <= len(saved):
+                    old = saved[seen[key] - 1]
+                    if old.category == category:
+                        status, notes = "same", ["already saved"]
+                    else:
+                        status, notes = "update", [f"{CATEGORY_TEXT[old.category]} -> {CATEGORY_TEXT[category]}"]
+                        r_old = old
             if seen[key] > 1 and status == "new":
                 notes.append("same driver and amount again on this day")
         out.append({"line": line, "status": status, "problems": problems + notes, "date": day.isoformat() if day else None,
+                    "_old": r_old if status == "update" else None,
                     "driver_code": code or None, "driver_name": drv.name if drv else name,
                     "category": category, "category_text": CATEGORY_TEXT[category], "amount": to_sar(amount or 0),
                     "reference": cell("reference")[:60], "note": cell("note")[:300],
@@ -155,6 +164,13 @@ async def import_expenses(file: UploadFile = File(...), business_date: str = For
     if commit:
         added: dict[str, Driver] = {}
         for r in rows:
+            if r["status"] == "update":
+                e = r["_old"]
+                audit.record(db, user, "updated", "expense", e.id, f"{e.driver.code} {to_sar(e.amount):,.2f} on {e.business_date.isoformat()}: "
+                             f"{CATEGORY_TEXT[e.category]} -> {CATEGORY_TEXT[r['category']]} (import {file.filename})")
+                e.category = r["category"]
+                saved += 1
+                continue
             if r["status"] != "new":
                 continue
             drv = r["_driver"] or added.get(r["driver_code"])
@@ -168,7 +184,7 @@ async def import_expenses(file: UploadFile = File(...), business_date: str = For
                            reference=r["reference"], note=r["note"], created_by=user))
             saved += 1
         if saved:
-            total = sum(r["_amount"] for r in rows if r["status"] == "new")
+            total = sum(r["_amount"] for r in rows if r["status"] in ("new", "update"))
             audit.record(db, user, "imported", "expense", None,
                          f"Expense sheet {file.filename}: {saved} payments, total {to_sar(total):,.2f}")
         db.commit()

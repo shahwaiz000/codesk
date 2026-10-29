@@ -66,7 +66,7 @@ class Collection(Base):
     driver: Mapped[Driver] = relationship()
 
 
-EXPENSE_CATEGORIES = ("salary", "incentive", "settlement", "fuel", "toll", "parking", "travel", "maintenance", "other", "advance")
+EXPENSE_CATEGORIES = ("expense", "salary", "incentive", "settlement", "fuel", "toll", "parking", "travel", "maintenance", "other", "advance")
 
 
 class Expense(Base):

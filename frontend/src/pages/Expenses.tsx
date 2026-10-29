@@ -18,7 +18,7 @@ function ExpenseDialog({ day, expense, drivers, onClose, onSaved }: {
 }) {
   const [kind, setKind] = useState<"expense" | "advance">(expense?.category === "advance" ? "advance" : "expense");
   const [driverId, setDriverId] = useState<number | "">(expense?.driver_id ?? "");
-  const [category, setCategory] = useState(expense && expense.category !== "advance" ? expense.category : "fuel");
+  const [category, setCategory] = useState(expense && expense.category !== "advance" ? expense.category : "expense");
   const [amount, setAmount] = useState(expense ? String(expense.amount) : "");
   const [reference, setReference] = useState(expense?.reference ?? "");
   const [note, setNote] = useState(expense?.note ?? "");
@@ -305,7 +305,7 @@ export default function Expenses() {
       {importing && (
         <ImportDialog day={day} title="Import the expense sheet" endpoint="/expenses/import" templateUrl="/api/expenses/template"
           noun={["payment", "payments"]} columns={EXPENSE_PREVIEW}
-          intro="Your own sheet works as it is: date, driver ID, driver name and amount, with or without a heading row. Without a category column every row is a travel expense. A driver who is not in CODesk yet is added from his name, and rows already saved are skipped."
+          intro="Your own sheet works as it is: date, driver ID, driver name and amount, with or without a heading row. Without a type column every row is saved as Expense; add a Type column (salary, incentive, final settlement, fuel...) to sort them. A driver who is not in CODesk yet is added from his name, and rows already saved are skipped."
           onClose={() => setImporting(false)}
           onSaved={(dates) => { setImporting(false); if (dates.length === 1) setDay(dates[0]); changed(); drivers.reload(); }} />
       )}

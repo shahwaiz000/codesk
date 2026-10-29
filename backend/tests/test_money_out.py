@@ -3,7 +3,9 @@ from datetime import date, timedelta
 
 import pytest
 
+from app.database import SessionLocal
 from app.deposits import status_for
+from app.models import Expense
 from app.seed import PLANTED, business_days, next_working_day
 from tests.conftest import END
 
@@ -146,7 +148,7 @@ def test_expense_sheet_import(client):
     up = lambda: {"file": ("expenses.csv", text.encode(), "text/csv")}  # noqa: E731
     r = client.post("/api/expenses/import", files=up()).json()
     assert r["counts"]["new"] == 2 and r["counts"]["error"] == 2 and r["counts"]["skipped"] == 1 and r["dates"] == [d]
-    assert r["rows"][0]["line"] == 1 and r["rows"][0]["category"] == "other"
+    assert r["rows"][0]["line"] == 1 and r["rows"][0]["category"] == "expense" and r["rows"][0]["category_text"] == "Expense"
     assert "new driver" in r["rows"][1]["problems"][0]
     assert client.post("/api/expenses/import", files=up(), data={"commit": "true"}).json()["saved"] == 2
     day = client.get("/api/expenses", params={"date": d}).json()
@@ -154,6 +156,14 @@ def test_expense_sheet_import(client):
     assert any(x["code"] == "X-901" for x in client.get("/api/drivers").json())
     again = client.post("/api/expenses/import", files=up()).json()
     assert again["counts"]["same"] == 2 and again["counts"]["new"] == 0
+    # a payment saved earlier as Travel from a sheet without a type becomes a plain Expense, not a second payment
+    with SessionLocal() as db:
+        e = db.query(Expense).filter_by(business_date=date(2026, 5, 12), amount=15100).one()
+        e.category = "travel"
+        db.commit()
+    r = client.post("/api/expenses/import", files=up(), data={"commit": "true"}).json()
+    assert r["counts"]["update"] == 1 and r["counts"]["new"] == 0
+    assert client.get("/api/expenses", params={"date": d}).json()["totals"]["total"] == 208.0
     # with a heading row and a category column
     text2 = "Date,Driver ID,Driver name,Amount,Type\n12-May-26,D-103,Yousef Al-Amri,40,Petrol\n12-May-26,D-103,Yousef Al-Amri,25,Lunch\n12-May-26,D-104,Bilal Ahmed,900,Final settlement\n12-May-26,D-104,Bilal Ahmed,150,Incentive\n"
     r = client.post("/api/expenses/import", files={"file": ("e2.csv", text2.encode(), "text/csv")}).json()
