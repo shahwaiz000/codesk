@@ -34,6 +34,35 @@ function PasswordForm() {
   );
 }
 
+const MODES = [
+  { value: "paid", title: "Orders are closed only when paid in full",
+    text: "A driver who cannot pay keeps the order pending, so a closed order is always paid. Collections shows each driver's cash from the system report, with no counting." },
+  { value: "count", title: "The desk counts each driver's cash",
+    text: "Orders can be closed before the money is counted. Collections compares the cash counted at the desk with the system's cash and shows short drivers in red." },
+];
+
+function CashMode() {
+  const { data, reload } = useApi<{ cash_mode: string }>("/settings");
+  const [error, setError] = useState<string | null>(null);
+  async function choose(value: string) {
+    setError(null);
+    try { await send("/settings", "PUT", { cash_mode: value }); reload(); }
+    catch (err) { setError((err as Error).message); }
+  }
+  return (
+    <fieldset className="space-y-3">
+      <legend className="sr-only">How your cash desk works</legend>
+      {MODES.map((m) => (
+        <label key={m.value} className={`flex cursor-pointer gap-3 rounded-lg border p-4 ${data?.cash_mode === m.value ? "border-ledger-700 bg-leaf-soft/40" : "border-paper-line hover:bg-paper/60"}`}>
+          <input type="radio" name="cash_mode" className="mt-1 h-4 w-4 accent-ledger-700" checked={data?.cash_mode === m.value} onChange={() => choose(m.value)} />
+          <span><span className="block text-sm font-medium">{m.title}</span><span className="mt-1 block text-sm text-ink-soft">{m.text}</span></span>
+        </label>
+      ))}
+      <FormError message={error} />
+    </fieldset>
+  );
+}
+
 export default function Settings() {
   const { username, loginEnabled } = useAuth();
   const log = useApi<AuditEntry[]>("/audit?limit=200");
@@ -41,8 +70,11 @@ export default function Settings() {
     <>
       <PageHeader title="Settings" subtitle={loginEnabled && username ? `Logged in as ${username}.` : "Login is turned off on this server."} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-        {loginEnabled && <Panel title="Password" className="self-start"><PasswordForm /></Panel>}
-        <Panel title="Activity log" flush className={loginEnabled ? "" : "lg:col-span-2"}>
+        <div className="space-y-6 self-start">
+          <Panel title="How your cash desk works"><CashMode /></Panel>
+          {loginEnabled && <Panel title="Password"><PasswordForm /></Panel>}
+        </div>
+        <Panel title="Activity log" flush className="">
           <p className="border-b border-paper-line px-5 py-3 text-xs text-ink-faint">Every change made in CODesk, newest first. Entries cannot be edited or deleted.</p>
           {log.loading && !log.data ? <Loading /> : log.error ? <div className="p-5"><ErrorBox message={log.error} retry={log.reload} /></div>
             : !log.data?.length ? <Empty title="No changes yet" hint="When you add or change a record, it is written here with your name and the time." />

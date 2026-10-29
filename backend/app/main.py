@@ -14,7 +14,7 @@ from . import audit, auth, collections, dashboard, deposits, driver_import, expe
 from .deps import current_user
 from .config import settings
 from .database import Base, SessionLocal, add_missing_columns, engine, get_db
-from .models import AuditEvent, Collection, Deposit, Driver, Expense, User, iso
+from .models import AppSetting, AuditEvent, Collection, Deposit, Driver, Expense, User, iso
 from .money import to_sar
 from .seed import seed_demo
 
@@ -220,6 +220,28 @@ def list_audit(limit: int = 100, db: Session = Depends(get_db)):
     rows = db.query(AuditEvent).order_by(AuditEvent.id.desc()).limit(max(1, min(limit, 500))).all()
     return [{"id": r.id, "at": iso(r.at), "username": r.username, "action": r.action, "entity": r.entity,
              "entity_id": r.entity_id, "summary": r.summary} for r in rows]
+
+
+class SettingsIn(BaseModel):
+    cash_mode: str = Field(pattern="^(count|paid)$")
+
+
+@app.get("/api/settings")
+def get_settings(db: Session = Depends(get_db)):
+    return {"cash_mode": collections.cash_mode(db)}
+
+
+@app.put("/api/settings")
+def put_settings(body: SettingsIn, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    s = db.get(AppSetting, "cash_mode") or AppSetting(key="cash_mode")
+    before = collections.cash_mode(db)
+    s.value = body.cash_mode
+    db.add(s)
+    if before != body.cash_mode:
+        text = {"count": "the desk counts each driver's cash", "paid": "orders are closed only when paid in full"}
+        audit.record(db, user, "updated", "settings", None, f"Cash handover: {text[before]} -> {text[body.cash_mode]}")
+    db.commit()
+    return {"cash_mode": body.cash_mode}
 
 
 @app.get("/api/meta")

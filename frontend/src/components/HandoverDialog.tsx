@@ -8,8 +8,10 @@ type DriverOption = { id: number; code: string; name: string };
 const asText = (n: number | undefined) => (n == null ? "" : String(n));
 
 /** Record or correct one driver's handover. The cash difference updates while you type. */
-export default function HandoverDialog({ day, handover, drivers, presetDriver, onClose, onSaved }: {
+export default function HandoverDialog({ day, handover, drivers, presetDriver, paid = false, onClose, onSaved }: {
   day: string; handover: Handover | null; drivers: DriverOption[]; presetDriver?: number;
+  /** orders are closed only when paid in full: the cash handed over is the system cash, nothing to count */
+  paid?: boolean;
   onClose: () => void; onSaved: () => void;
 }) {
   const [driverId, setDriverId] = useState<number | "">(handover?.driver_id ?? presetDriver ?? "");
@@ -22,7 +24,7 @@ export default function HandoverDialog({ day, handover, drivers, presetDriver, o
   const [busy, setBusy] = useState(false);
 
   const exp = parseAmount(expected);
-  const rec = parseAmount(received);
+  const rec = paid ? exp : parseAmount(received);
   const diff = exp != null && rec != null ? Math.round((rec - exp) * 100) / 100 : null;
   const ready = driverId !== "" && exp != null && rec != null && (pos.trim() === "" || parseAmount(pos) != null);
 
@@ -33,7 +35,7 @@ export default function HandoverDialog({ day, handover, drivers, presetDriver, o
     try {
       await send("/collections", "PUT", {
         business_date: day, driver_id: driverId, orders: Number(orders || 0),
-        expected_cash: expected, cash_received: received, pos_amount: pos.trim() || "0", note,
+        expected_cash: expected, cash_received: paid ? expected : received, pos_amount: pos.trim() || "0", note,
       });
       onSaved();
     } catch (err) { setError((err as Error).message); setBusy(false); }
@@ -54,7 +56,10 @@ export default function HandoverDialog({ day, handover, drivers, presetDriver, o
             <input className="field num" inputMode="numeric" value={orders} onChange={(e) => setOrders(e.target.value.replace(/\D/g, ""))} /></label>
         </div>
 
-        <fieldset className="rounded-lg border border-paper-line p-4">
+        {paid ? (
+          <label className="block text-sm font-medium">Cash collected (system)
+            <input className="field num text-right" inputMode="decimal" value={expected} onChange={(e) => setExpected(e.target.value)} placeholder="0.00" /></label>
+        ) : <fieldset className="rounded-lg border border-paper-line p-4">
           <legend className="px-1 text-sm font-medium">Cash</legend>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm text-ink-soft">Expected (system)
@@ -66,13 +71,13 @@ export default function HandoverDialog({ day, handover, drivers, presetDriver, o
             <span>{diff == null ? "Enter both amounts to see the difference" : diff < 0 ? "Driver is short" : diff > 0 ? "Driver handed over extra" : "Cash agrees"}</span>
             {diff != null && <span className="num font-semibold">{diff > 0 ? "+" : ""}{fmtMoney(diff)}</span>}
           </p>
-        </fieldset>
+        </fieldset>}
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm font-medium">POS (card) total
             <input className="field num text-right" inputMode="decimal" value={pos} onChange={(e) => setPos(e.target.value)} placeholder="0.00" /></label>
           <label className="block text-sm font-medium">Note
-            <input className="field" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={diff && diff < 0 ? "Reason for the shortage" : "Optional"} /></label>
+            <input className="field" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={!paid && diff && diff < 0 ? "Reason for the shortage" : "Optional"} /></label>
         </div>
         <FormError message={error} />
         <div className="flex justify-end gap-2 pt-1">

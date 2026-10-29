@@ -18,10 +18,11 @@ const DAY: CollectionDay = {
   missing: [{ id: 2, code: "D-102", name: "Imran Qureshi", hub: "North Hub" }],
 };
 
-function mockApi() {
+function mockApi(cashMode = "count") {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
-    const body = url.includes("/meta") ? { latest_business_date: "2026-10-25", currency: "SAR" }
+    const body = url.includes("/settings") ? { cash_mode: cashMode }
+      : url.includes("/meta") ? { latest_business_date: "2026-10-25", currency: "SAR" }
       : url.includes("/collections/days") ? [{ date: "2026-10-25", drivers: 2, cash_received: 1950, pos_amount: 1000, difference: -50, short: 50 }]
       : url.includes("/collections") ? DAY
       : url.includes("/drivers") ? [{ id: 1, code: "D-101", name: "Faisal Al-Harbi", active: true }, { id: 2, code: "D-102", name: "Imran Qureshi", active: true }]
@@ -63,4 +64,14 @@ test("the handover form shows the cash difference while typing", async () => {
   const [, init] = vi.mocked(fetch).mock.calls[0];
   expect(JSON.parse(String(init!.body))).toMatchObject({ driver_id: 2, expected_cash: "1,200", cash_received: "1180", pos_amount: "0" });
   expect(saved).toHaveBeenCalled();
+});
+
+test("a desk that closes orders only when paid sees cash per driver without counting", async () => {
+  mockApi("paid");
+  render(<BusinessDayProvider><Collections /></BusinessDayProvider>);
+  expect(await screen.findByText("Cash collected")).toBeInTheDocument();
+  expect(screen.queryByText("Cash counted")).not.toBeInTheDocument();
+  expect(screen.queryByText("Short")).not.toBeInTheDocument();
+  expect(screen.queryByText("Not handed over yet")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Add by hand/ })).toBeInTheDocument();
 });

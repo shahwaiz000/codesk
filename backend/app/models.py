@@ -115,6 +115,13 @@ class PosOrder(Base):
     driver: Mapped[Driver] = relationship()
 
 
+class AppSetting(Base):
+    """How this desk works, chosen on the Settings page."""
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[str] = mapped_column(String(200), default="")
+
+
 class TerminalTotal(Base):
     """One POS machine's total for one day, from the terminal sheet. Machines move between drivers,
     so the driver is found each day: by the machine's known owner, by an exact amount match with a

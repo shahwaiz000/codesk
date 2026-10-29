@@ -14,13 +14,21 @@ from . import audit
 from .database import get_db
 from .deps import current_user, not_future, parse_day
 from .files import FileProblem, clean_code, find_column, read_date, read_upload
-from .models import Collection, Driver, TerminalTotal
+from .models import AppSetting, Collection, Driver, TerminalTotal
 from .money import to_halalas, to_sar
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
 MAX_AMOUNT = 100_000_000  # 1,000,000 SAR in halalas: nothing a single driver hands over in one day
 MAX_ORDERS = 1000
+
+
+CASH_MODES = ("count", "paid")  # count: the desk counts each driver's cash; paid: orders are closed only when paid in full
+
+
+def cash_mode(db: Session) -> str:
+    s = db.get(AppSetting, "cash_mode")
+    return s.value if s and s.value in CASH_MODES else "count"
 
 
 def status_of(diff: int) -> str:
@@ -139,8 +147,10 @@ def upsert(body: HandoverIn, db: Session = Depends(get_db), user: str = Depends(
         raise HTTPException(404, "Driver not found")
     if not driver.active and not db.query(Collection).filter_by(business_date=day, driver_id=driver.id).first():
         raise HTTPException(409, f"{driver.code} is inactive. Reactivate the driver on the Drivers page first")
-    row, result = save_handover(db, user, day, driver, body.orders, _amount(body.expected_cash, "Expected cash"),
-                                _amount(body.cash_received, "Cash received"), _amount(body.pos_amount, "POS amount"),
+    expected = _amount(body.expected_cash, "Expected cash")
+    # when orders are closed only once paid in full, what the driver handed over is the system cash
+    received = expected if cash_mode(db) == "paid" else _amount(body.cash_received, "Cash received")
+    row, result = save_handover(db, user, day, driver, body.orders, expected, received, _amount(body.pos_amount, "POS amount"),
                                 " ".join(body.note.split()))
     db.commit()
     return {**row_dict(row), "result": result}
@@ -318,13 +328,14 @@ def _check_report(db: Session, df, default_day: date | None) -> tuple[list[dict]
             problems.append(f"{code} is inactive")
         existing = db.query(Collection).filter_by(business_date=day, driver_id=drv.id).first() if drv else None
         expected, orders = g["cash"], len(g["orders"])
-        received = existing.cash_received if existing else expected
+        paid = cash_mode(db) == "paid"  # orders closed only when paid: the cash received is the system cash
+        received = expected if paid or not existing else existing.cash_received
         pos = existing.pos_amount if existing else 0
         note = (existing.note if existing else "")
         status = "error" if problems else "new"
         if existing and not problems:
-            status = "same" if (existing.expected_cash, existing.orders) == (expected, orders) else "update"
-        notes = [] if problems else (["counted cash kept as recorded"] if existing else ["counted cash set to the system cash: change it if short"])
+            status = "same" if (existing.expected_cash, existing.cash_received, existing.orders) == (expected, received, orders) else "update"
+        notes = [] if problems or paid else (["counted cash kept as recorded"] if existing else ["counted cash set to the system cash: change it if short"])
         out.append({"line": g["line"], "status": status, "problems": problems + notes, "driver_code": code,
                     "driver_name": drv.name if drv else g["name"], "date": day.isoformat(), "orders": orders,
                     "expected_cash": to_sar(expected), "cash_received": to_sar(received), "pos_amount": to_sar(pos),

@@ -171,3 +171,24 @@ def test_the_systems_order_report_becomes_one_handover_per_driver(client):
     assert next(x for x in r["rows"] if x["driver_code"] == "D-101")["status"] == "update"
     h = next(x for x in client.get("/api/collections", params={"date": d}).json()["rows"] if x["driver_code"] == "D-101")
     assert (h["expected_cash"], h["cash_received"], h["difference"]) == (165.0, 140.0, -25.0)
+
+
+def test_a_desk_that_closes_orders_only_when_paid(client):
+    """Some desks close an order only when the driver has paid it in full, so cash received is always
+    the system cash: the import and the form follow that, and the choice is logged."""
+    assert client.get("/api/settings").json() == {"cash_mode": "count"}
+    try:
+        assert client.put("/api/settings", json={"cash_mode": "paid"}).json() == {"cash_mode": "paid"}
+        assert client.put("/api/settings", json={"cash_mode": "nope"}).status_code == 422
+        d = "2026-05-07"
+        text = ("Waybill Number,Collect Method,Actual Received Amount,DA Code,Collection Operation Time\n"
+                "PW-1,Cash,80.00,D-103,2026-05-07 20:00:00\nPW-2,POS,50.00,D-103,2026-05-07 20:01:00\n")
+        r = client.post("/api/collections/import", files={"file": ("r.csv", text.encode(), "text/csv")}, data={"commit": "true"}).json()
+        assert r["rows"][0]["problems"] == [] and r["saved"] == 1
+        drv = driver_id(client, "D-103")
+        client.put("/api/collections", json={"business_date": d, "driver_id": drv, "orders": 2, "expected_cash": 90, "cash_received": 10})
+        h = next(x for x in client.get("/api/collections", params={"date": d}).json()["rows"] if x["driver_id"] == drv)
+        assert (h["expected_cash"], h["cash_received"], h["status"]) == (90.0, 90.0, "ok")
+        assert any("closed only when paid in full" in a["summary"] for a in client.get("/api/audit").json())
+    finally:
+        client.put("/api/settings", json={"cash_mode": "count"})

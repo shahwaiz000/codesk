@@ -18,6 +18,13 @@ function Figure({ label, children, foot }: { label: string; children: React.Reac
   );
 }
 
+const PAID_PREVIEW = [
+  { label: "Driver", cell: (r: PreviewRow) => <><span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> <span className="text-ink-soft">{r.driver_name as string}</span></> },
+  { label: "Orders", right: true, cell: (r: PreviewRow) => <span className="num">{r.orders as number}</span> },
+  { label: "Cash", right: true, cell: money("expected_cash") },
+  { label: "POS (system)", right: true, cell: money("system_pos") },
+];
+
 const HANDOVER_PREVIEW = [
   { label: "Driver", cell: (r: PreviewRow) => <><span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> <span className="text-ink-soft">{r.driver_name as string}</span></> },
   { label: "Expected", right: true, cell: money("expected_cash") },
@@ -38,6 +45,7 @@ export default function Collections() {
   const [version, setVersion] = useState(0);
   const { data, error, loading, reload } = useApi<CollectionDay>(`/collections?date=${day}&v=${version}`);
   const drivers = useApi<Driver[]>("/drivers");
+  const paid = useApi<{ cash_mode: string }>("/settings").data?.cash_mode === "paid";
   const [dialog, setDialog] = useState<{ handover: Handover | null; preset?: number } | null>(null);
   const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState<Handover | null>(null);
@@ -63,15 +71,33 @@ export default function Collections() {
 
   return (
     <>
-      <PageHeader title="Collections" subtitle="What each driver handed over: cash counted at the desk against the cash the system expects, plus POS card totals.">
-        <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import file</button>
-        <button onClick={() => setDialog({ handover: null })} disabled={free.length === 0} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Record handover</button>
+      <PageHeader title="Collections" subtitle={paid
+        ? "The cash and card money each driver handed over, from your system's collection report. Orders are closed only when paid in full, so this is the day's cash that goes to the bank."
+        : "What each driver handed over: cash counted at the desk against the cash the system expects, plus POS card totals."}>
+        <button onClick={() => setImporting(true)} className={paid ? "btn-primary" : "btn-quiet"}><Icon name="upload" className="h-4 w-4" />Import file</button>
+        <button onClick={() => setDialog({ handover: null })} disabled={free.length === 0} className={paid ? "btn-quiet" : "btn-primary"}><Icon name="plus" className="h-4 w-4" />{paid ? "Add by hand" : "Record handover"}</button>
       </PageHeader>
 
       <DayPicker refreshKey={version} />
 
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
+          {paid ? (
+          <dl className="mb-6 grid grid-cols-2 divide-paper-line overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 lg:divide-x [&>*]:border-paper-line max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r">
+            <Figure label="Cash collected" foot="Goes to the bank, less what you paid out">
+              <Money value={t.cash_received} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
+            </Figure>
+            <Figure label="POS (card)" foot="Machine totals from the POS check">
+              <Money value={t.pos_amount} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
+            </Figure>
+            <Figure label="Total collected" foot={<><span className="num">{t.orders}</span> orders closed</>}>
+              <Money value={t.total} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
+            </Figure>
+            <Figure label="Drivers" foot="With orders closed on this day">
+              <span className="num">{t.drivers}</span>
+            </Figure>
+          </dl>
+          ) : (
           <dl className="mb-6 grid grid-cols-2 divide-paper-line overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 lg:divide-x [&>*]:border-paper-line max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r">
             <Figure label="Cash counted" foot={<>Expected <span className="num">{fmtMoney(t.expected_cash)}</span></>}>
               <Money value={t.cash_received} /> <span className="text-sm font-normal text-ink-faint">SAR</span>
@@ -94,9 +120,10 @@ export default function Collections() {
               </span>
             </Figure>
           </dl>
+          )}
 
           <Panel flush title={`Handovers on ${fmtDay(day)}`}
-            action={data.rows.length > 0 && (t.short_count + t.over_count > 0) && (
+            action={!paid && data.rows.length > 0 && (t.short_count + t.over_count > 0) && (
               <label className="flex items-center gap-2 text-sm text-ink-soft">
                 <input type="checkbox" className="h-4 w-4 accent-ledger-700" checked={onlyDiffs} onChange={(e) => setOnlyDiffs(e.target.checked)} />
                 Only differences</label>
@@ -116,12 +143,13 @@ export default function Collections() {
                     <tr className="border-b border-paper-line text-left text-xs text-ink-faint">
                       <th className="px-5 py-2.5 font-medium">Driver</th>
                       <th className="px-3 py-2.5 text-right font-medium">Orders</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Expected cash</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Cash counted</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Difference</th>
+                      {paid ? <th className="px-3 py-2.5 text-right font-medium">Cash</th> : <>
+                        <th className="px-3 py-2.5 text-right font-medium">Expected cash</th>
+                        <th className="px-3 py-2.5 text-right font-medium">Cash counted</th>
+                        <th className="px-3 py-2.5 text-right font-medium">Difference</th></>}
                       <th className="px-3 py-2.5 text-right font-medium">POS terminal</th>
                       <th className="px-3 py-2.5 text-right font-medium">Total</th>
-                      <th className="px-3 py-2.5 font-medium">Status</th>
+                      {!paid && <th className="px-3 py-2.5 font-medium">Status</th>}
                       <th className="px-5 py-2.5"><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
@@ -134,14 +162,15 @@ export default function Collections() {
                           {h.note && <span className="block max-w-xs truncate text-xs text-ink-faint" title={h.note}>{h.note}</span>}
                         </td>
                         <td className="num px-3 py-3 text-right text-ink-soft">{h.orders}</td>
-                        <td className="px-3 py-3 text-right"><Money value={h.expected_cash} tone="muted" /></td>
-                        <td className="px-3 py-3 text-right font-medium"><Money value={h.cash_received} /></td>
-                        <td className="px-3 py-3 text-right font-semibold">
-                          {h.difference ? <Money value={h.difference} tone={h.difference < 0 ? "short" : "brass"} /> : <span className="text-ink-faint">-</span>}
-                        </td>
+                        {paid ? <td className="px-3 py-3 text-right font-medium"><Money value={h.cash_received} /></td> : <>
+                          <td className="px-3 py-3 text-right"><Money value={h.expected_cash} tone="muted" /></td>
+                          <td className="px-3 py-3 text-right font-medium"><Money value={h.cash_received} /></td>
+                          <td className="px-3 py-3 text-right font-semibold">
+                            {h.difference ? <Money value={h.difference} tone={h.difference < 0 ? "short" : "brass"} /> : <span className="text-ink-faint">-</span>}
+                          </td></>}
                         <td className="px-3 py-3 text-right"><Money value={h.pos_amount} /></td>
                         <td className="px-3 py-3 text-right"><Money value={h.total} /></td>
-                        <td className="px-3 py-3"><StatusBadge h={h} /></td>
+                        {!paid && <td className="px-3 py-3"><StatusBadge h={h} /></td>}
                         <td className="px-5 py-3">
                           <div className="flex justify-end gap-1">
                             <button onClick={() => setDialog({ handover: h })} className="rounded-md px-2 py-1 text-xs font-medium text-ink-soft hover:bg-paper-deep hover:text-ink">Correct</button>
@@ -156,12 +185,13 @@ export default function Collections() {
                       <tr className="bg-paper/70 font-semibold">
                         <td className="px-5 py-3">Day total</td>
                         <td className="num px-3 py-3 text-right">{t.orders}</td>
-                        <td className="px-3 py-3 text-right"><Money value={t.expected_cash} /></td>
-                        <td className="px-3 py-3 text-right"><Money value={t.cash_received} /></td>
-                        <td className="px-3 py-3 text-right">{t.difference ? <Money value={t.difference} tone={t.difference < 0 ? "short" : "brass"} /> : "-"}</td>
+                        {paid ? <td className="px-3 py-3 text-right"><Money value={t.cash_received} /></td> : <>
+                          <td className="px-3 py-3 text-right"><Money value={t.expected_cash} /></td>
+                          <td className="px-3 py-3 text-right"><Money value={t.cash_received} /></td>
+                          <td className="px-3 py-3 text-right">{t.difference ? <Money value={t.difference} tone={t.difference < 0 ? "short" : "brass"} /> : "-"}</td></>}
                         <td className="px-3 py-3 text-right"><Money value={t.pos_amount} /></td>
                         <td className="px-3 py-3 text-right"><Money value={t.total} /></td>
-                        <td colSpan={2} />
+                        <td colSpan={paid ? 1 : 2} />
                       </tr>
                     </tfoot>
                   )}
@@ -169,7 +199,7 @@ export default function Collections() {
               </div>
             )}
 
-            {data.missing.length > 0 && data.rows.length > 0 && (
+            {!paid && data.missing.length > 0 && data.rows.length > 0 && (
               <div className="border-t border-paper-line px-5 py-4">
                 <p className="mb-3 text-sm font-medium">Not handed over yet <span className="font-normal text-ink-faint">({data.missing.length})</span></p>
                 <ul className="flex flex-wrap gap-2">
@@ -190,14 +220,14 @@ export default function Collections() {
       )}
 
       {dialog && (
-        <HandoverDialog day={day} handover={dialog.handover} presetDriver={dialog.preset}
+        <HandoverDialog day={day} handover={dialog.handover} presetDriver={dialog.preset} paid={paid}
           drivers={dialog.handover ? active.concat((drivers.data ?? []).filter((d) => d.id === dialog.handover!.driver_id && !d.active)) : free}
           onClose={() => setDialog(null)} onSaved={() => { setDialog(null); changed(); }} />
       )}
       {importing && (
         <ImportDialog day={day} title="Import handovers" endpoint="/collections/import" templateUrl="/api/collections/template"
-          noun={["handover", "handovers"]} columns={HANDOVER_PREVIEW}
-          intro="Upload your system's collection report as it is (one line per order): each driver's expected cash is added up from his cash lines, and the counted cash starts equal to it, so you only change the drivers who were short. Or upload a list with one row per driver: driver ID, expected cash and cash received."
+          noun={["handover", "handovers"]} columns={paid ? PAID_PREVIEW : HANDOVER_PREVIEW}
+          intro={paid ? "Upload your system's collection report as it is (one line per order). Each driver's cash lines are added up into the cash he handed over; card lines are left to the POS check." : "Upload your system's collection report as it is (one line per order): each driver's expected cash is added up from his cash lines, and the counted cash starts equal to it, so you only change the drivers who were short. Or upload a list with one row per driver: driver ID, expected cash and cash received."}
           onClose={() => setImporting(false)}
           onSaved={(dates) => { setImporting(false); if (dates.length === 1) setDay(dates[0]); changed(); }} />
       )}
