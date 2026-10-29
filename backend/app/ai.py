@@ -131,16 +131,29 @@ def chat(db: Session, messages: list[dict], tools: list[dict] | None = None, jso
         body["tools"] = tools
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    if cloud:
+        body["reasoning_effort"] = "low"  # a quick answer, not a long "thinking" one: much faster on a busy day
     busy = ""
+    deadline = time.monotonic() + settings.ai_total_seconds
     for i, model in enumerate(models):
         for wait in (0, *(waits if i == 0 else ())):
+            left = deadline - time.monotonic()
+            if left < 5:
+                break
             if wait:
-                time.sleep(wait)
+                time.sleep(min(wait, left))
             try:
-                return _post(url, headers, {**body, "model": model}, timeout, cloud)
+                return _post(url, headers, {**body, "model": model}, min(timeout, deadline - time.monotonic()), cloud)
             except _Busy as e:
                 busy = str(e)
-            except AiProblem:
+            except AiProblem as e:
+                if "reasoning" in str(e).lower() and "reasoning_effort" in body:  # a model without this setting
+                    body.pop("reasoning_effort")
+                    try:
+                        return _post(url, headers, {**body, "model": model}, min(timeout, deadline - time.monotonic()), cloud)
+                    except _Busy as again:
+                        busy = str(again)
+                        continue
                 if i == 0:
                     raise
                 break  # the lighter model is not available to this account: give the busy message below
@@ -200,7 +213,7 @@ def choose(body: AiIn, db: Session = Depends(get_db), user: str = Depends(curren
 @router.post("/test")
 def test(db: Session = Depends(get_db), user: str = Depends(current_user)):
     try:
-        msg = chat(db, [{"role": "user", "content": "Reply with the single word: ready"}], timeout=60)
+        msg = chat(db, [{"role": "user", "content": "Reply with the single word: ready"}], timeout=25)
     except AiProblem as e:
         raise HTTPException(422, str(e))
     return {"ok": True, "reply": (msg.get("content") or "").strip()[:80]}

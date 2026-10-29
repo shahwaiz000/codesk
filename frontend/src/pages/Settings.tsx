@@ -206,6 +206,9 @@ function AiEngine() {
         <button disabled={busy || (e === "gemini" && !sure)} className="btn-primary">Save</button>
         <button type="button" disabled={busy || !data.ready} onClick={test} className="btn-quiet">Test the AI</button>
       </div>
+      {busy && <p role="status" className="flex items-center gap-2 text-sm text-ink-soft">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-leaf border-t-transparent" />
+        Waiting for the AI… if Google is busy, CODesk tries again by itself (up to a minute and a half).</p>}
     </form>
   );
 }
