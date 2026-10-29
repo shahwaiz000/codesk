@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"  # the local AI that reads deposit slips (free, runs on this computer)
     slip_model: str = "qwen3-vl:4b"             # reads handwriting best among the models that fit a laptop
     slip_model_small: str = "qwen3-vl:2b"       # used when the bigger one does not fit in the free memory
-    gemini_model: str = "gemini-3.8-flash"       # Google's free-tier model, for demo data only (change it on Settings when Google renames it)
-    gemini_fallback: str = "gemini-3.1-flash-lite"  # tried when the main model is busy
+    gemini_model: str = "gemini-3.1-flash-lite"       # Google's free-tier model, for demo data only (change it on Settings when Google renames it)
+    gemini_fallback: str = "gemini-3.8-flash"     # tried when the main model is busy
     ai_retry_waits: tuple[int, ...] = (2, 5)     # seconds to wait before trying a busy model again
     ai_total_seconds: int = 90                   # the longest CODesk waits for one answer, retries included
     ask_model: str = "qwen3:4b"                 # the local text model for Ask CODesk
