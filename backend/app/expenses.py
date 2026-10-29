@@ -19,7 +19,7 @@ from .money import to_halalas, to_sar
 
 router = APIRouter(prefix="/api", tags=["expenses"])
 
-CATEGORY_TEXT = {"fuel": "Fuel", "toll": "Toll", "parking": "Parking", "travel": "Travel", "maintenance": "Maintenance",
+CATEGORY_TEXT = {"salary": "Salary", "incentive": "Incentive", "settlement": "Final settlement", "fuel": "Fuel", "toll": "Toll", "parking": "Parking", "travel": "Travel", "maintenance": "Maintenance",
                  "other": "Other", "advance": "Advance"}
 
 

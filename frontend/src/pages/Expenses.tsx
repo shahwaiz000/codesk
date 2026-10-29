@@ -3,7 +3,7 @@ import { todayIso, useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
 import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
-import { useCountUp, Van } from "../components/VanArt";
+import { useCountUp } from "../components/VanArt";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
 import type { Advances, DepositLedger, Driver, ExpenseDay, ExpenseRow } from "../types";
@@ -168,53 +168,65 @@ function AdvancesPanel({ refreshKey, onChanged }: { refreshKey: number; onChange
   );
 }
 
-/** The van at the fuel pump, with the day's receipt printed beside it. */
-function FuelStop({ total, count, drivers }: { total: number; count: number; drivers: number }) {
-  const [printed, setPrinted] = useState(false);
-  useEffect(() => { const id = requestAnimationFrame(() => setPrinted(true)); return () => cancelAnimationFrame(id); }, []);
-  const zig = Array.from({ length: 24 }, (_, i) => `l${5} ${i % 2 ? -6 : 6}`).join(" ");
+/** Pay envelopes leaving the CODesk cash box for the drivers, each tagged with what it pays for. */
+function PayEnvelopes({ labels, drivers }: { labels: string[]; drivers: number }) {
+  const [sent, setSent] = useState(false);
+  useEffect(() => { const id = requestAnimationFrame(() => setSent(true)); return () => cancelAnimationFrame(id); }, []);
+  const tags = (labels.length ? labels : ["Paid"]).slice(0, 3);
+  const spots = [{ x: 168, y: 96, r: -10 }, { x: 234, y: 58, r: 4 }, { x: 294, y: 98, r: 12 }];
+  const people = [{ x: 318, s: 0.82, c: "#1d7a55" }, { x: 351, s: 0.92, c: "#145c3f" }, { x: 383, s: 0.8, c: "#21503e" }].slice(0, Math.max(1, Math.min(3, drivers)));
   return (
-    <svg viewBox="0 0 520 270" className="h-full w-full" preserveAspectRatio="xMidYMid slice" role="img"
-      aria-label={`The van at the fuel pump, with a receipt for ${count} payments`}>
-      <rect width="520" height="270" fill="#fbf6ea" />
-      <circle cx="450" cy="58" r="105" fill="#f8eed9" />
-      <g fill="#fff" opacity=".95"><ellipse cx="300" cy="40" rx="30" ry="9" /><ellipse cx="322" cy="33" rx="18" ry="10" /></g>
-      <path d="M0 214H520" stroke="#ece2cb" strokeWidth="22" />
-      <path d="M0 214H520" stroke="#fff" strokeWidth="2" strokeDasharray="14 12" />
-      {/* the station: canopy, sign and pump */}
-      <rect x="62" y="58" width="272" height="20" rx="4" fill="#0f2e22" />
-      <rect x="62" y="78" width="272" height="5" fill="#e2b55a" />
-      <rect x="76" y="83" width="8" height="120" fill="#21503e" />
-      <g transform="translate(200 46)"><rect x="-34" y="-14" width="68" height="24" rx="5" fill="#e2b55a" />
-        <text y="3" fontSize="12" textAnchor="middle" fill="#0f2e22" fontWeight="800" letterSpacing="2">FUEL</text></g>
-      <g transform="translate(96 124)">
-        <rect width="44" height="80" rx="6" fill="#1d7a55" />
-        <rect x="7" y="9" width="30" height="18" rx="3" fill="#08201a" />
-        <text x="22" y="22" fontSize="9" textAnchor="middle" fill="#e2b55a" fontFamily="monospace" fontWeight="700">SAR</text>
-        <rect x="7" y="34" width="30" height="4" rx="2" fill="#9fbcae" />
-        <rect x="-4" y="78" width="52" height="6" rx="2" fill="#0f2e22" />
-        <path d="M44 40h6q6 0 6 8v26q0 8 8 8h18" stroke="#16211c" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        <rect x="40" y="34" width="8" height="14" rx="2" fill="#16211c" />
+    <svg viewBox="0 0 420 270" className="h-full w-full" preserveAspectRatio="xMidYMid slice" role="img"
+      aria-label={`Pay envelopes going from the cash box to ${drivers} drivers`}>
+      <rect width="420" height="270" fill="#fbf6ea" />
+      <circle cx="372" cy="54" r="96" fill="#f8eed9" />
+      <g fill="#fff" opacity=".95"><ellipse cx="96" cy="46" rx="28" ry="8" /><ellipse cx="116" cy="39" rx="16" ry="9" /></g>
+      <rect x="0" y="206" width="420" height="64" fill="#ece2cb" />
+      <rect x="0" y="206" width="420" height="4" fill="#e2d3b4" />
+      <path d="M118 150C150 40 280 26 336 120" fill="none" stroke="#e2b55a" strokeWidth="2" strokeDasharray="3 7" strokeLinecap="round" />
+      {/* the cash box */}
+      <g transform="translate(30 146) scale(.82)">
+        <g transform="rotate(-8 30 0)">{[0, 1, 2].map((i) => <rect key={i} x={26 + i * 18} y={-18 - i * 3} width="40" height="22" rx="2" fill={i === 1 ? "#34a374" : "#2f8a63"} stroke="#9fd4b8" strokeOpacity=".6" />)}</g>
+        <rect width="124" height="74" rx="8" fill="#1d7a55" />
+        <rect width="124" height="10" rx="5" fill="#34a374" />
+        <rect x="46" y="26" width="32" height="20" rx="4" fill="#e2b55a" />
+        <circle cx="62" cy="36" r="4" fill="#86590c" />
+        <text x="62" y="64" fontSize="9" textAnchor="middle" fill="#cfe0d7" fontWeight="700" letterSpacing="1.6">CODesk CASH</text>
       </g>
-      {/* the van, parked at the pump */}
-      <g transform="translate(176 122) scale(.9)"><Van deposited late={false} spin={false} /></g>
-      {/* the receipt */}
-      <g transform="translate(362 40) rotate(4) scale(.82)">
-        <g style={{ clipPath: printed ? "inset(0 0 0 0)" : "inset(0 0 100% 0)", transition: "clip-path 1.2s cubic-bezier(.3,.7,.3,1) .2s" }}>
-          <path d={`M0 0h120v170 ${zig.replace(/l5/g, "l-5").split(" ").join(" ")}z`} fill="#fff" stroke="#e1e6e0" />
-          <text x="60" y="22" fontSize="11" textAnchor="middle" fill="#0f2e22" fontWeight="800" letterSpacing="1.5">CODesk</text>
-          <text x="60" y="35" fontSize="7" textAnchor="middle" fill="#7c8781" letterSpacing="1.2">PAID OUT RECEIPT</text>
-          <path d="M12 46h96" stroke="#c9cfc8" strokeDasharray="3 3" />
-          <g fontSize="9" fill="#4a5650">
-            <text x="12" y="64">Payments</text><text x="108" y="64" textAnchor="end" fontWeight="700" fill="#16211c">{count}</text>
-            <text x="12" y="80">Drivers</text><text x="108" y="80" textAnchor="end" fontWeight="700" fill="#16211c">{drivers}</text>
+      {/* the envelopes */}
+      {tags.map((tag, i) => {
+        const p = spots[i];
+        return (
+          <g key={tag} style={{ transform: sent ? `translate(${p.x}px, ${p.y}px)` : "translate(84px, 140px) scale(.3)",
+            transition: `transform 1.1s cubic-bezier(.25,.8,.3,1) ${0.15 + i * 0.22}s` }} className="motion-reduce:!transition-none">
+            <g transform={`rotate(${p.r}) scale(.9)`}>
+              <rect x="-30" y="-19" width="60" height="38" rx="4" fill="#fff" stroke="#e2b55a" strokeWidth="1.5" />
+              <path d="M-30-17 0 4l30-21" fill="none" stroke="#e2b55a" strokeWidth="1.5" strokeLinejoin="round" />
+              <circle cy="4" r="6" fill="#b8402e" /><text y="7" fontSize="7" textAnchor="middle" fill="#fff" fontWeight="800">C</text>
+            </g>
+            <g transform={`translate(${-(tag.length * 2.8 + 6)} 24)`}>
+              <rect width={tag.length * 5.6 + 12} height="15" rx="7.5" fill="#0f2e22" />
+              <text x="6" y="10.5" fontSize="9" fill="#e2b55a" fontWeight="700">{tag}</text>
+            </g>
           </g>
-          <g stroke="#e8ece6" strokeWidth="5" strokeLinecap="round"><path d="M12 96h60M12 108h80M12 120h48" /></g>
-          <path d="M12 132h96" stroke="#c9cfc8" strokeDasharray="3 3" />
-          <text x="12" y="152" fontSize="9" fill="#4a5650">TOTAL</text>
-          <text x="108" y="153" fontSize="13" textAnchor="end" fill="#86590c" fontWeight="800">{fmtMoney(total)}</text>
+        );
+      })}
+      {/* the drivers */}
+      {people.map((m, i) => (
+        <g key={i} transform={`translate(${m.x} 206) scale(${m.s})`}>
+          <path d="M-24 0v-22q0-22 24-22t24 22V0z" fill={m.c} />
+          <path d="M-6-44 0-36l6-8" fill="none" stroke="#e2b55a" strokeWidth="2.5" strokeLinejoin="round" />
+          <circle cy="-58" r="15" fill="#c98f62" />
+          <path d="M-16-62q2-14 16-14t16 14z" fill={i === 1 ? "#e2b55a" : "#0f2e22"} />
+          {i === 1 && <rect x="-18" y="-64" width="36" height="5" rx="2.5" fill="#86590c" />}
+          <circle cx="-5" cy="-56" r="1.6" fill="#16211c" /><circle cx="5" cy="-56" r="1.6" fill="#16211c" />
+          <path d="M-5-50q5 4 10 0" stroke="#16211c" strokeWidth="1.6" fill="none" strokeLinecap="round" />
         </g>
-      </g>
+      ))}
+      {drivers > 3 && (
+        <g transform="translate(351 234)"><rect x="-30" y="-11" width="60" height="22" rx="11" fill="#0f2e22" />
+          <text y="4" fontSize="10.5" textAnchor="middle" fill="#e2b55a" fontWeight="800">+{drivers - 3} more</text></g>
+      )}
     </svg>
   );
 }
@@ -254,7 +266,7 @@ function PaidOutHero({ day, t, drivers }: { day: string; t: ExpenseDay["totals"]
         )}
       </div>
       <div className="h-52 min-w-0 sm:h-64 lg:h-auto lg:min-h-[17rem]">
-        <FuelStop key={day} total={t.total} count={t.count} drivers={drivers} />
+        <PayEnvelopes key={day} labels={[...t.by_category].sort((x, y) => y.amount - x.amount).map((c) => c.category_text)} drivers={drivers} />
       </div>
     </section>
   );
@@ -286,7 +298,7 @@ export default function Expenses() {
 
   return (
     <>
-      <PageHeader title="Expenses & advances" subtitle="Travel expenses and advances paid to drivers out of the day's cash. Everything here lowers that day's cash to deposit.">
+      <PageHeader title="Expenses & advances" subtitle="Money paid to drivers out of the day's cash: salaries, incentives, final settlements, fuel, travel and advances. Everything here lowers that day's cash to deposit.">
         <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import sheet</button>
         <button onClick={() => setDialog({ expense: null })} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Pay out</button>
       </PageHeader>

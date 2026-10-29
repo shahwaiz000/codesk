@@ -1,7 +1,7 @@
 """Import the day's driver expenses from the desk's own sheet: date, driver ID, driver name, amount.
 
-The category column is optional; without it every row is a travel expense (what the desk pays drivers
-most). A driver who is not in CODesk yet is added from the name in the sheet, so a driver who had no
+The category column is optional (salary, incentive, final settlement, fuel, travel... in the desk's own
+words); without it a row is saved as Other and can be changed on the page. A driver who is not in CODesk yet is added from the name in the sheet, so a driver who had no
 collection that day can still be paid. A row already saved (same day, driver, category and amount) is
 skipped, so importing the same sheet twice never pays twice."""
 import re
@@ -33,6 +33,8 @@ COLUMNS = {
     "note": ("note", "notes", "remark", "remarks", "comment", "description"),
 }
 WORDS = {  # a category written in the sheet, in the desk's own words
+    "salary": ("salary", "salaries", "wage", "payroll"), "incentive": ("incentive", "bonus", "reward", "commission"),
+    "settlement": ("settlement", "final", "eos", "end of service"),
     "fuel": ("fuel", "petrol", "diesel", "gas"), "toll": ("toll",), "parking": ("parking",),
     "travel": ("travel", "trip", "transport", "taxi", "ticket"), "maintenance": ("maintenance", "repair", "tyre", "tire", "oil"),
     "advance": ("advance", "loan"), "other": ("other",),
@@ -102,7 +104,7 @@ def _check(db: Session, df, default_day: date | None) -> list[dict]:
         elif amount <= 0 or amount > MAX_AMOUNT:
             problems.append("amount must be more than 0")
         written = cell("category")
-        category = _category(written) if written else "travel"
+        category = _category(written) if written else "other"
         if category is None:
             category = "other"
             notes.append(f"'{written}' saved as Other")

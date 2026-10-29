@@ -146,7 +146,7 @@ def test_expense_sheet_import(client):
     up = lambda: {"file": ("expenses.csv", text.encode(), "text/csv")}  # noqa: E731
     r = client.post("/api/expenses/import", files=up()).json()
     assert r["counts"]["new"] == 2 and r["counts"]["error"] == 2 and r["counts"]["skipped"] == 1 and r["dates"] == [d]
-    assert r["rows"][0]["line"] == 1 and r["rows"][0]["category"] == "travel"
+    assert r["rows"][0]["line"] == 1 and r["rows"][0]["category"] == "other"
     assert "new driver" in r["rows"][1]["problems"][0]
     assert client.post("/api/expenses/import", files=up(), data={"commit": "true"}).json()["saved"] == 2
     day = client.get("/api/expenses", params={"date": d}).json()
@@ -155,6 +155,6 @@ def test_expense_sheet_import(client):
     again = client.post("/api/expenses/import", files=up()).json()
     assert again["counts"]["same"] == 2 and again["counts"]["new"] == 0
     # with a heading row and a category column
-    text2 = "Date,Driver ID,Driver name,Amount,Type\n12-May-26,D-103,Yousef Al-Amri,40,Petrol\n12-May-26,D-103,Yousef Al-Amri,25,Lunch\n"
+    text2 = "Date,Driver ID,Driver name,Amount,Type\n12-May-26,D-103,Yousef Al-Amri,40,Petrol\n12-May-26,D-103,Yousef Al-Amri,25,Lunch\n12-May-26,D-104,Bilal Ahmed,900,Final settlement\n12-May-26,D-104,Bilal Ahmed,150,Incentive\n"
     r = client.post("/api/expenses/import", files={"file": ("e2.csv", text2.encode(), "text/csv")}).json()
-    assert [x["category"] for x in r["rows"]] == ["fuel", "other"] and "saved as Other" in r["rows"][1]["problems"][0]
+    assert [x["category"] for x in r["rows"]] == ["fuel", "other", "settlement", "incentive"] and "saved as Other" in r["rows"][1]["problems"][0]
