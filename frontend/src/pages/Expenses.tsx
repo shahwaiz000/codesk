@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { todayIso, useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
+import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
 import type { Advances, Driver, ExpenseDay, ExpenseRow } from "../types";
@@ -166,8 +167,15 @@ function AdvancesPanel({ refreshKey, onChanged }: { refreshKey: number; onChange
   );
 }
 
+const EXPENSE_PREVIEW = [
+  { label: "Driver", cell: (r: PreviewRow) => <><span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> <span className="text-ink-soft">{r.driver_name as string}</span></> },
+  { label: "Category", cell: (r: PreviewRow) => <span className="text-ink-soft">{r.category_text as string}</span> },
+  { label: "Amount", right: true, cell: money("amount") },
+];
+
 export default function Expenses() {
-  const { day } = useBusinessDay();
+  const { day, setDay } = useBusinessDay();
+  const [importing, setImporting] = useState(false);
   const [version, setVersion] = useState(0);
   const { data, error, loading, reload } = useApi<ExpenseDay>(`/expenses?date=${day}&v=${version}`);
   const drivers = useApi<Driver[]>("/drivers");
@@ -186,8 +194,16 @@ export default function Expenses() {
   return (
     <>
       <PageHeader title="Expenses & advances" subtitle="Travel expenses and advances paid to drivers out of the day's cash. Everything here lowers that day's cash to deposit.">
+        <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import sheet</button>
         <button onClick={() => setDialog({ expense: null })} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Pay out</button>
       </PageHeader>
+      {importing && (
+        <ImportDialog day={day} title="Import the expense sheet" endpoint="/expenses/import" templateUrl="/api/expenses/template"
+          noun={["payment", "payments"]} columns={EXPENSE_PREVIEW}
+          intro="Your own sheet works as it is: date, driver ID, driver name and amount, with or without a heading row. Without a category column every row is a travel expense. A driver who is not in CODesk yet is added from his name, and rows already saved are skipped."
+          onClose={() => setImporting(false)}
+          onSaved={(dates) => { setImporting(false); if (dates.length === 1) setDay(dates[0]); changed(); drivers.reload(); }} />
+      )}
       <DayPicker refreshKey={version} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">

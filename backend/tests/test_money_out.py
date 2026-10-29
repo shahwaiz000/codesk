@@ -132,3 +132,29 @@ def test_open_advances_in_the_demo_data(client):
     assert all(a["days_open"] > 0 for a in demo)
     everything = client.get("/api/advances", params={"status": "all"}).json()["rows"]
     assert {a["driver_code"] for a in everything if a["settled_on"] and a["created_by"] == "demo"} == {"D-102", "D-106"}
+
+
+def test_expense_sheet_import(client):
+    """The desk's own expense sheet: date, driver ID, name, amount, even without a heading row.
+    A driver who is not in CODesk yet is added; importing the same sheet again pays nothing twice."""
+    d = "2026-05-12"
+    text = ("12-May-26,D-101,Faisal Al-Harbi,151.00\n"
+            "12-May-26,X-901,New Expense Driver,57.00\n"    # not in CODesk yet: added on save
+            "12-May-26,D-102,Imran Qureshi,abc\n"           # bad amount
+            "12-May-26,,Nobody,10\n"                         # no driver ID
+            ",,Total,208.00\n")                              # the sheet's total line is skipped
+    up = lambda: {"file": ("expenses.csv", text.encode(), "text/csv")}  # noqa: E731
+    r = client.post("/api/expenses/import", files=up()).json()
+    assert r["counts"]["new"] == 2 and r["counts"]["error"] == 2 and r["counts"]["skipped"] == 1 and r["dates"] == [d]
+    assert r["rows"][0]["line"] == 1 and r["rows"][0]["category"] == "travel"
+    assert "new driver" in r["rows"][1]["problems"][0]
+    assert client.post("/api/expenses/import", files=up(), data={"commit": "true"}).json()["saved"] == 2
+    day = client.get("/api/expenses", params={"date": d}).json()
+    assert day["totals"]["total"] == 208.0
+    assert any(x["code"] == "X-901" for x in client.get("/api/drivers").json())
+    again = client.post("/api/expenses/import", files=up()).json()
+    assert again["counts"]["same"] == 2 and again["counts"]["new"] == 0
+    # with a heading row and a category column
+    text2 = "Date,Driver ID,Driver name,Amount,Type\n12-May-26,D-103,Yousef Al-Amri,40,Petrol\n12-May-26,D-103,Yousef Al-Amri,25,Lunch\n"
+    r = client.post("/api/expenses/import", files={"file": ("e2.csv", text2.encode(), "text/csv")}).json()
+    assert [x["category"] for x in r["rows"]] == ["fuel", "other"] and "saved as Other" in r["rows"][1]["problems"][0]
