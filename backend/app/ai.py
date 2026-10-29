@@ -7,6 +7,7 @@ Privacy rule, enforced here and not only written on the screen: Google may use w
 tier to improve its models, so the cloud engine only works while CODesk runs in demo mode (the fictional
 drivers and days). Real company data never goes to the cloud; with real data, the local engine is used."""
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -67,24 +68,11 @@ def status(db: Session) -> dict:
     return out
 
 
-def chat(db: Session, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False,
-         local_model: str | None = None, timeout: float = 120) -> dict:
-    """One chat turn. Returns the assistant message (OpenAI format, kept exactly as received so it can be
-    sent back in the next turn, which Gemini needs for its thought signatures)."""
-    st = status(db)
-    if not st["ready"]:
-        raise AiProblem(st["reason"])
-    if st["engine"] == "gemini":
-        url, model = GEMINI_URL + "chat/completions", st["gemini_model"]
-        key = _get(db, "gemini_key")
-        headers = {"Authorization": f"Bearer {key}", "x-goog-api-key": key}  # both forms Google accepts, old and new keys
-    else:
-        url, model, headers = settings.ollama_url.rstrip("/") + "/v1/chat/completions", local_model or settings.ask_model, {}
-    body: dict = {"model": model, "messages": messages, "temperature": 0}
-    if tools:
-        body["tools"] = tools
-    if json_mode:
-        body["response_format"] = {"type": "json_object"}
+class _Busy(Exception):
+    """Google's model is busy for a moment (a 503, or a 429 that is about demand, not the daily limit)."""
+
+
+def _post(url: str, headers: dict, body: dict, timeout: float, cloud: bool) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", **headers})
     try:
@@ -97,18 +85,60 @@ def chat(db: Session, messages: list[dict], tools: list[dict] | None = None, jso
             why = (detail.get("error") or {}).get("message") if isinstance(detail.get("error"), dict) else detail.get("error")
         except (ValueError, OSError, AttributeError):
             why = ""
+        why = why or ""
         if e.code in (401, 403):
             raise AiProblem("The Gemini API key was not accepted. Check it on the Settings page")
+        if e.code in (500, 502, 503, 504) or "demand" in why.lower() or "overloaded" in why.lower():
+            raise _Busy(why or str(e.code))
         if e.code == 429:
             raise AiProblem("The free AI limit is reached for now. Wait a minute and try again")
         raise AiProblem(f"The AI could not answer: {why or e.code}")
     except (urllib.error.URLError, OSError):
-        raise AiProblem("The AI cannot be reached. " + ("Check the internet connection" if st["engine"] == "gemini"
-                                                        else "Start Ollama, then try again"))
+        raise AiProblem("The AI cannot be reached. " + ("Check the internet connection" if cloud else "Start Ollama, then try again"))
     try:
         return answer["choices"][0]["message"]
     except (KeyError, IndexError, TypeError):
         raise AiProblem("The AI's answer could not be understood. Try again")
+
+
+def chat(db: Session, messages: list[dict], tools: list[dict] | None = None, json_mode: bool = False,
+         local_model: str | None = None, timeout: float = 120) -> dict:
+    """One chat turn. Returns the assistant message (OpenAI format, kept exactly as received so it can be
+    sent back in the next turn, which Gemini needs for its thought signatures). When Google's model is busy,
+    CODesk waits and tries again, then tries the lighter free model."""
+    st = status(db)
+    if not st["ready"]:
+        raise AiProblem(st["reason"])
+    cloud = st["engine"] == "gemini"
+    if cloud:
+        url = GEMINI_URL + "chat/completions"
+        key = _get(db, "gemini_key")
+        headers = {"Authorization": f"Bearer {key}", "x-goog-api-key": key}  # both forms Google accepts, old and new keys
+        models = [st["gemini_model"]] + [m for m in (settings.gemini_fallback,) if m and m != st["gemini_model"]]
+        waits = settings.ai_retry_waits
+    else:
+        url, headers = settings.ollama_url.rstrip("/") + "/v1/chat/completions", {}
+        models, waits = [local_model or settings.ask_model], ()
+    body: dict = {"messages": messages, "temperature": 0}
+    if tools:
+        body["tools"] = tools
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    busy = ""
+    for i, model in enumerate(models):
+        for wait in (0, *(waits if i == 0 else ())):
+            if wait:
+                time.sleep(wait)
+            try:
+                return _post(url, headers, {**body, "model": model}, timeout, cloud)
+            except _Busy as e:
+                busy = str(e)
+            except AiProblem:
+                if i == 0:
+                    raise
+                break  # the lighter model is not available to this account: give the busy message below
+    raise AiProblem("Google's free AI is busy right now (this is on Google's side). Wait a minute and try again"
+                    + (f". ({busy})" if busy and len(busy) < 160 else ""))
 
 
 def image_part(png_b64: str) -> dict:

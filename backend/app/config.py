@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     slip_model: str = "qwen3-vl:4b"             # reads handwriting best among the models that fit a laptop
     slip_model_small: str = "qwen3-vl:2b"       # used when the bigger one does not fit in the free memory
     gemini_model: str = "gemini-3.8-flash"       # Google's free-tier model, for demo data only (change it on Settings when Google renames it)
+    gemini_fallback: str = "gemini-3.1-flash-lite"  # tried when the main model is busy
+    ai_retry_waits: tuple[int, ...] = (2, 5)     # seconds to wait before trying a busy model again
     ask_model: str = "qwen3:4b"                 # the local text model for Ask CODesk
     slip_context: int = 4096                    # room for the picture and the answer (less memory)
     slip_timeout: int = 300                     # seconds: a laptop without a graphics card reads a slip in 1-3 minutes

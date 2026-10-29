@@ -94,3 +94,28 @@ def test_a_demo_slip_is_made_only_in_demo_mode(client, monkeypatch):
     assert r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert slip_reader.number_to_words(36810) == "thirty six thousand eight hundred ten"
     assert slip_reader.words_to_number(slip_reader.number_to_words(7925)) == 7925
+
+
+def test_a_busy_google_is_tried_again_then_the_lighter_model(client, cloud, monkeypatch):
+    import io
+    import urllib.error
+    monkeypatch.setattr(settings, "ai_retry_waits", (0, 0))
+    tried = []
+
+    def fake_post(url, headers, body, timeout, cloud_):
+        tried.append(body["model"])
+        if body["model"] == settings.gemini_fallback:
+            return {"role": "assistant", "content": "ready"}
+        raise ai._Busy("This model is currently experiencing high demand")
+    monkeypatch.setattr(ai, "_post", fake_post)
+    with SessionLocal() as db:
+        assert ai.chat(db, [{"role": "user", "content": "hi"}])["content"] == "ready"
+    assert tried == [ai.status(SessionLocal())["gemini_model"]] * 3 + [settings.gemini_fallback]
+
+    def always_busy(url, headers, body, timeout, cloud_):
+        if body["model"] == settings.gemini_fallback:
+            raise ai.AiProblem("model not found")
+        raise ai._Busy("high demand")
+    monkeypatch.setattr(ai, "_post", always_busy)
+    with SessionLocal() as db, pytest.raises(ai.AiProblem, match="busy right now"):
+        ai.chat(db, [{"role": "user", "content": "hi"}])
