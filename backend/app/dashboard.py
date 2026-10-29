@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from . import pos
+from . import pos, unusual
 from .collections import day_totals
 from .database import get_db
 from .deposits import ledger
@@ -103,6 +103,8 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
               .order_by(ImportedFile.id.desc()).limit(5)):
         alerts.append({"kind": f"file_{f.status}", "date": f.at.date().isoformat(), "amount": 0, "page": "/settings",
                        "text": f"{f.filename}: " + ("could not be imported" if f.status == "failed" else "some rows were left out")})
+    for a in unusual.find(db, since, today):
+        alerts.append({"kind": a["kind"], "date": a["date"], "amount": a["amount"], "page": a["page"], "text": a["text"]})
     alerts.sort(key=lambda a: a["date"], reverse=True)
 
     # last 30 working days ending on the chosen day

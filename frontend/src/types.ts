@@ -92,3 +92,9 @@ export interface ReportPreview {
   totals: { expected_cash: number; cash_received: number; cash_difference: number; pos_system: number; pos_terminal: number;
     pos_difference: number; paid_out: number; returned: number; to_deposit: number; deposited: number; pending: number };
 }
+
+export interface Unusual {
+  key: string; kind: "unusual_expense" | "unusual_payout" | "unusual_pos"; date: string; driver_code: string | null; driver_name: string | null;
+  amount: number; usual: number | null; ratio: number | null; page: string; text: string; expense_id?: number;
+  review: { note: string; by: string } | null;
+}

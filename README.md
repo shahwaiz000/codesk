@@ -50,6 +50,8 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 **Deposit slip reader (AI).** Scan or photograph the handwritten bank slip and read it on the Bank deposits page, or drop it in the watch folder. A vision AI model that runs on this computer through [Ollama](https://ollama.com) (free; slips never leave the computer) reads the date, bank, slip number, total, amount in words and every note line. CODesk then checks what the AI read with plain arithmetic: each line (notes × count), the lines against the total, the words against the total, and finds the one day still to deposit with the same amount (within rounding). Nothing is recorded by the AI: the slip waits with its picture and the checks until a person records it with one click. Setup once: install Ollama, then `ollama pull qwen3-vl:4b` (about 3.3 GB, fits a laptop with 8 GB of memory).
 
+**Unusual amounts.** CODesk learns what is normal from the desk's own last 90 days and points out what is not: a payment several times the driver's usual for that kind of expense (or the desk's usual when he has no history yet), a day whose total paid out is several times a usual day, and a driver whose POS machine disagreed with his orders on several of his recent days. "Usual" is the median, so one odd payment does not move it, and small amounts never alarm. Alerts show on the dashboard and on the Expenses page, and can be marked "looks fine" with a note.
+
 **Drivers.** Driver IDs, hubs and POS terminal IDs (one terminal per active driver), added one by one or imported from a CSV or Excel list (existing drivers are updated, never doubled, and an empty cell never wipes a saved value). Each handover keeps the terminal used that day, so moving a machine to another driver does not change old days. A driver with records cannot be deleted, only made inactive.
 
 **Activity log and login.** Every change is saved with who made it, when, and the old and new amounts. Log entries cannot be edited or deleted, which is also blocked in the database layer. One owner account, scrypt password hashing, an HttpOnly session cookie, lockout after five wrong passwords, and changes from unknown websites are refused.
@@ -61,7 +63,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 94 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 100 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 
@@ -77,6 +79,7 @@ Started on an empty database, the backend adds 12 fictional drivers and 30 worki
 | Deposit short | 1 day: 500 SAR |
 | Late deposit | 1 day, deposited 3 working days after it was due |
 | Not deposited yet | the latest day |
+| Unusual payment | 1 fuel payment of 420 SAR, about 5x the driver's usual |
 
 The `samples` folder has a fictional day to import yourself, in this order:
 
@@ -125,6 +128,7 @@ backend/app/
   expenses.py     expenses and advances, recovery by salary or cash
   watcher.py      the watch folder: recognises and imports the day's files by itself
   slip_reader.py  reads deposit slips with a local AI model, then checks the sums
+  unusual.py      unusual amounts, learned from the desk's own history
   deposits.py     the cash-to-deposit ledger and deposit slips
   dashboard.py    the day at a glance and the needs-attention list
   reports.py      Excel and PDF reports

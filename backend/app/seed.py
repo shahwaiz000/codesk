@@ -34,6 +34,8 @@ PLANTED = {
     "undeposited": 0,             # the latest day: cash is on hand, deposit is due today
     # (day position, driver, terminal total minus the system's POS orders, in SAR)
     "pos_differences": [(1, "D-105", -150.0), (4, "D-102", 85.5), (7, "D-108", -320.0), (13, "D-111", -60.0)],
+    # (day position, driver, category, SAR): one payment far above the usual for its kind
+    "unusual_expenses": [(3, "D-104", "fuel", 420)],
 }
 
 
@@ -123,6 +125,10 @@ def seed_demo(db: Session, end: date | None = None) -> None:
                        settled_on=days[settled] if settled is not None else None,
                        settlement_method="salary" if settled is not None else "",
                        settlement_note="Recovered from salary" if settled is not None else "", created_by="demo"))
+        spent_by_day[pos] += sar * 100
+    for pos, code, cat, sar in PLANTED["unusual_expenses"]:
+        db.add(Expense(business_date=days[pos], driver_id=by_code[code].id, category=cat, amount=sar * 100,
+                       reference="RC-77777", created_by="demo"))
         spent_by_day[pos] += sar * 100
 
     short_pos, short_sar = PLANTED["short_deposit"]

@@ -122,6 +122,15 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(String(200), default="")
 
 
+class UnusualReview(Base):
+    """An unusual amount someone looked at and found fine, so it stops being pointed out."""
+    __tablename__ = "unusual_reviews"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)  # e.g. expense:123
+    note: Mapped[str] = mapped_column(String(300), default="")
+    decided_by: Mapped[str] = mapped_column(String(40), default="")
+    decided_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class SlipScan(Base):
     """A deposit slip read by the local AI, waiting for a person to record it (or put it aside)."""
     __tablename__ = "slip_scans"

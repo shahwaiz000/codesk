@@ -6,7 +6,7 @@ import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { useCountUp } from "../components/VanArt";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
-import type { Advances, DepositLedger, Driver, ExpenseDay, ExpenseRow } from "../types";
+import type { Advances, DepositLedger, Driver, ExpenseDay, ExpenseRow, Unusual } from "../types";
 
 const CATEGORIES = [
   { value: "fuel", text: "Fuel" }, { value: "toll", text: "Toll" }, { value: "parking", text: "Parking" },
@@ -272,6 +272,50 @@ function PaidOutHero({ day, t, drivers }: { day: string; t: ExpenseDay["totals"]
   );
 }
 
+/** What CODesk found unusual on this day, with a way to say "looks fine". */
+function UnusualBox({ items, onChanged }: { items: Unusual[]; onChanged: () => void }) {
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const open = items.filter((a) => !a.review);
+  if (!items.length) return null;
+  async function fine(key: string) {
+    setError(null);
+    try { await send("/unusual/review", "POST", { key, note }); setNoteFor(null); setNote(""); onChanged(); }
+    catch (e) { setError((e as Error).message); }
+  }
+  return (
+    <div className={`mb-6 rounded-panel border p-5 ${open.length ? "border-brass/40 bg-brass-soft/50" : "border-paper-line bg-white"}`}>
+      <p className="flex items-center gap-2 text-sm font-semibold text-brass-dark">
+        <Icon name="spark" className="h-5 w-5" />
+        {open.length ? `CODesk noticed ${open.length} unusual ${open.length === 1 ? "amount" : "amounts"} on this day` : "Unusual amounts on this day, all looked at"}
+      </p>
+      <p className="mt-1 text-xs text-ink-soft">Compared with the desk's own last 90 days. It may be fine; it is worth a look.</p>
+      <ul className="mt-3 space-y-2">
+        {items.map((a) => (
+          <li key={a.key} className="rounded-lg bg-white/80 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="min-w-0 flex-1">{a.text}</span>
+              {a.review ? <span className="text-xs text-leaf-dark">Looked at by {a.review.by}{a.review.note && `: ${a.review.note}`}</span>
+                : noteFor === a.key ? null
+                : <button onClick={() => setNoteFor(a.key)} className="btn-quiet !px-3 !py-1 text-xs">Looks fine</button>}
+            </div>
+            {noteFor === a.key && (
+              <form onSubmit={(e) => { e.preventDefault(); fine(a.key); }} className="mt-2 flex flex-wrap gap-2">
+                <input className="field !mt-0 min-w-0 flex-1" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)}
+                  placeholder="Why it is fine (optional), e.g. two trips to Riyadh" autoFocus />
+                <button className="btn-primary !px-3 !py-1.5 text-xs">Save</button>
+                <button type="button" onClick={() => setNoteFor(null)} className="btn-quiet !px-3 !py-1.5 text-xs">Cancel</button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+      <FormError message={error} />
+    </div>
+  );
+}
+
 const EXPENSE_PREVIEW = [
   { label: "Driver", cell: (r: PreviewRow) => <><span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> <span className="text-ink-soft">{r.driver_name as string}</span></> },
   { label: "Category", cell: (r: PreviewRow) => <span className="text-ink-soft">{r.category_text as string}</span> },
@@ -283,6 +327,9 @@ export default function Expenses() {
   const [importing, setImporting] = useState(false);
   const [version, setVersion] = useState(0);
   const { data, error, loading, reload } = useApi<ExpenseDay>(`/expenses?date=${day}&v=${version}`);
+  const oddData = useApi<Unusual[]>(`/unusual?date=${day}&v=${version}`).data;
+  const odd = Array.isArray(oddData) ? oddData : [];
+  const oddByExpense = new Map(odd.filter((a) => a.expense_id && !a.review).map((a) => [a.expense_id!, a]));
   const drivers = useApi<Driver[]>("/drivers");
   const [dialog, setDialog] = useState<{ expense: ExpenseRow | null } | null>(null);
   const [deleting, setDeleting] = useState<ExpenseRow | null>(null);
@@ -311,6 +358,7 @@ export default function Expenses() {
       )}
       <DayPicker refreshKey={version} />
 
+      <UnusualBox items={odd} onChanged={changed} />
       {data && t && t.count > 0 && <PaidOutHero day={day} t={t} drivers={new Set(data.rows.map((r) => r.driver_id)).size} />}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0">
@@ -349,7 +397,12 @@ export default function Expenses() {
                               : <span className="text-ink-soft">{e.category_text}</span>}
                           </td>
                           <td className="num px-3 py-3 text-ink-soft">{e.reference || "-"}</td>
-                          <td className="px-3 py-3 text-right font-medium"><Money value={e.amount} /></td>
+                          <td className="px-3 py-3 text-right font-medium">
+                            {oddByExpense.has(e.id) && (
+                              <span title={oddByExpense.get(e.id)!.text} className="mr-2 inline-flex items-center gap-1 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+                                <Icon name="spark" className="h-3 w-3" />{oddByExpense.get(e.id)!.ratio}x usual</span>
+                            )}
+                            <Money value={e.amount} /></td>
                           <td className="px-5 py-3">
                             {!e.settled_on && (
                               <div className="flex justify-end gap-1">

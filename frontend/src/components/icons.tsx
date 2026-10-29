@@ -5,6 +5,7 @@ const PATHS = {
   dashboard: <><path d="M3 13h8V3H3Z" /><path d="M13 21h8V11h-8Z" /><path d="M3 21h8v-6H3Z" /><path d="M13 3v6h8V3Z" /></>,
   cash: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6 12h.01M18 12h.01" /></>,
   card: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20M6 15h4" /></>,
+  spark: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z" /><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7Z" /></>,
   receipt: <><path d="M5 3v18l2.5-1.5L10 21l2-1.5 2 1.5 2.5-1.5L19 21V3l-2.5 1.5L14 3l-2 1.5L10 3 7.5 4.5Z" /><path d="M9 9h6M9 13h6" /></>,
   bank: <><path d="m3 9 9-5 9 5" /><path d="M5 9v9M10 9v9M14 9v9M19 9v9M3 21h18" /></>,
   report: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6M8 17v-3M12 17v-6M16 17v-2" /></>,
