@@ -76,7 +76,8 @@ def chat(db: Session, messages: list[dict], tools: list[dict] | None = None, jso
         raise AiProblem(st["reason"])
     if st["engine"] == "gemini":
         url, model = GEMINI_URL + "chat/completions", st["gemini_model"]
-        headers = {"Authorization": f"Bearer {_get(db, 'gemini_key')}"}
+        key = _get(db, "gemini_key")
+        headers = {"Authorization": f"Bearer {key}", "x-goog-api-key": key}  # both forms Google accepts, old and new keys
     else:
         url, model, headers = settings.ollama_url.rstrip("/") + "/v1/chat/completions", local_model or settings.ask_model, {}
     body: dict = {"model": model, "messages": messages, "temperature": 0}
