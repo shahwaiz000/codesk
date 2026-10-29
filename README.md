@@ -36,7 +36,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 ![Expenses and advances](docs/screenshots/expenses.png)
 
-**Bank deposits.** A day-by-day ledger: cash received, paid out, cash to deposit, deposited and pending, with one status per day: cash on hand, due today, overdue, deposit short, deposited (and how many days late). A day can be deposited with several slips. A slip number can be used only once, a slip cannot be more than what is still pending, and a deposit cannot be dated before its business day.
+**Bank deposits.** A day-by-day ledger: cash received, paid out, cash to deposit, deposited and pending, with one status per day: cash on hand, due today, overdue, deposit short, deposited (and how many days late). A day can be deposited with several slips. Cash goes in as notes, so a day deposited to within a few riyals (the halalas left behind, or a slip rounded up to the next note, under 5 SAR) counts as deposited, and the rounding is shown. A slip number can be used only once, a slip cannot be more than what is still pending, and a deposit cannot be dated before its business day.
 
 ![Bank deposits](docs/screenshots/deposits.png)
 
@@ -57,7 +57,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 86 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 87 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 

@@ -94,6 +94,7 @@ function Slips({ row, onDelete }: { row: DepositDay; onDelete: (s: Slip) => void
         <div className="flex justify-between border-t border-paper-line pt-1.5 font-semibold"><dt>Cash to deposit</dt><dd><Money value={row.to_deposit} /></dd></div>
         <div className="flex justify-between"><dt className="text-ink-soft">Deposited</dt><dd><Money value={-row.deposited} /></dd></div>
         <div className="flex justify-between border-t border-paper-line pt-1.5 font-semibold"><dt>Pending</dt><dd><Money value={row.pending} tone={row.pending > 0 ? "short" : "leaf"} /></dd></div>
+        {!!row.rounding && <div className="flex justify-between text-xs text-ink-faint"><dt>Rounded to whole notes</dt><dd><Money value={row.rounding} tone="muted" /></dd></div>}
       </dl>
     </div>
   );
@@ -177,7 +178,9 @@ export default function Deposits() {
                           <td className="px-3 py-3 text-right"><Money value={r.paid_out - r.returned} tone="muted" /></td>
                           <td className="px-3 py-3 text-right font-medium"><Money value={r.to_deposit} /></td>
                           <td className="px-3 py-3 text-right"><Money value={r.deposited} /></td>
-                          <td className="px-3 py-3 text-right font-semibold">{r.pending ? <Money value={r.pending} tone={attention ? "short" : "brass"} /> : <span className="text-ink-faint">-</span>}</td>
+                          <td className="px-3 py-3 text-right font-semibold">{r.pending ? <Money value={r.pending} tone={attention ? "short" : "brass"} />
+                            : r.rounding ? <span className="text-xs font-normal text-ink-faint" title="Cash goes to the bank in whole notes">rounded {r.rounding > 0 ? "+" : ""}{fmtMoney(r.rounding)}</span>
+                            : <span className="text-ink-faint">-</span>}</td>
                           <td className="px-3 py-3">
                             <span className="flex flex-wrap items-center gap-1.5">
                               <Badge tone={TONE[r.status]}>{r.status_text}</Badge>

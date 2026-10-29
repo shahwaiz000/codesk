@@ -64,7 +64,7 @@ export type DepositStatus = "deposited" | "not_due" | "due_today" | "overdue" | 
 export interface Slip { id: number; deposit_date: string; bank: string; slip_ref: string; amount: number; note: string; created_by: string }
 export interface DepositDay {
   date: string; due_on: string; cash_received: number; paid_out: number; returned: number; to_deposit: number;
-  deposited: number; pending: number; status: DepositStatus; status_text: string; late: boolean; days_late: number; slips: Slip[];
+  deposited: number; pending: number; rounding?: number; status: DepositStatus; status_text: string; late: boolean; days_late: number; slips: Slip[];
 }
 export interface DepositLedger {
   rows: DepositDay[]; banks: string[]; today: string;

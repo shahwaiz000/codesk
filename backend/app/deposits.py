@@ -4,7 +4,8 @@
                       - expenses and advances paid out that day
                       + advances returned in cash that day
 
-A day can be deposited with more than one slip. A day is overdue when money is still pending after
+A day can be deposited with more than one slip. Cash goes in as notes, so a day deposited to within
+a few riyals (the halalas left, or a slip rounded up to the next note) counts as deposited. A day is overdue when money is still pending after
 its deposit day, and short when slips were recorded but they add up to less than the cash to deposit."""
 from collections import defaultdict
 from datetime import date
@@ -28,8 +29,20 @@ STATUS_TEXT = {"deposited": "Deposited", "not_due": "Cash on hand", "due_today":
                "short": "Deposit short", "over": "Deposited too much", "nothing": "Nothing to deposit"}
 
 
+# Cash goes to the bank in notes: the halalas of a day cannot be deposited, and a slip is often rounded
+# up to the next note. A day deposited within these limits counts as deposited, and the gap is shown as rounding.
+ROUND_DOWN = 100  # up to 0.99 SAR left over
+ROUND_UP = 500    # up to 4.99 SAR more on the slip
+
+
+def rounded(to_deposit: int, deposited: int) -> bool:
+    return deposited > 0 and -ROUND_UP < to_deposit - deposited < ROUND_DOWN
+
+
 def status_for(day: date, to_deposit: int, deposited: int, today: date) -> str:
     pending = to_deposit - deposited
+    if pending and rounded(to_deposit, deposited):
+        return "deposited"
     if pending < 0:
         return "over"
     if pending == 0:
@@ -64,7 +77,9 @@ def ledger(db: Session, today: date | None = None) -> list[dict]:
         out.append({
             "date": day.isoformat(), "due_on": due.isoformat(),
             "cash_received": to_sar(c), "paid_out": to_sar(p), "returned": to_sar(r),
-            "to_deposit": to_sar(to_dep), "deposited": to_sar(dep), "pending": to_sar(to_dep - dep),
+            "to_deposit": to_sar(to_dep), "deposited": to_sar(dep),
+            "pending": 0.0 if rounded(to_dep, dep) else to_sar(to_dep - dep),
+            "rounding": to_sar(dep - to_dep) if rounded(to_dep, dep) else 0.0,
             "status": status, "status_text": STATUS_TEXT[status],
             "late": bool(last and last > due and dep > 0),
             "days_late": (last - due).days if last and last > due else 0,
@@ -118,8 +133,9 @@ def add_deposit(body: DepositIn, db: Session = Depends(get_db), user: str = Depe
     row = next((r for r in ledger(db) if r["date"] == day.isoformat()), None)
     if not row:
         raise HTTPException(409, "There is no cash recorded for this business day")
-    if amount > to_halalas(row["pending"]):
-        raise HTTPException(422, f"The slip is more than the {row['pending']:,.2f} SAR still to deposit for this day")
+    still = to_halalas(row["to_deposit"]) - to_halalas(row["deposited"])
+    if amount >= still + ROUND_UP:
+        raise HTTPException(422, f"The slip is more than the {to_sar(max(still, 0)):,.2f} SAR still to deposit for this day")
     d = Deposit(business_date=day, deposit_date=when, bank=" ".join(body.bank.split()), slip_ref=slip, amount=amount,
                 note=" ".join(body.note.split()), created_by=user)
     db.add(d)

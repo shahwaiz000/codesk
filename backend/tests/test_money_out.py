@@ -26,14 +26,14 @@ def ledger_row(client, day: date):
     (0, 0, "not_due"),       # collected today, deposit is due tomorrow
     (1, 0, "due_today"),
     (2, 0, "overdue"),
-    (2, 50, "short"),
-    (2, 100, "deposited"),
-    (2, 120, "over"),
+    (2, 5000, "short"),
+    (2, 10000, "deposited"),
+    (2, 12000, "over"),
 ])
 def test_deposit_status_rules(today_shift, deposited, expected):
     day = date(2026, 10, 25)  # Sunday, so the deposit day is Monday
     today = day + timedelta(days=today_shift)
-    assert status_for(day, 100, deposited, today) == expected
+    assert status_for(day, 10000, deposited, today) == expected
     assert status_for(day, 0, 0, today) == "nothing"
 
 
@@ -71,7 +71,7 @@ def test_record_a_deposit_with_two_slips(client):
     r = client.post("/api/deposits", json=slip)
     assert r.status_code == 201 and r.json()["status"] == "short" and r.json()["pending"] == 419.5
     assert client.post("/api/deposits", json=slip).status_code == 409  # same slip twice
-    too_much = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-2", "amount": 420})
+    too_much = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-2", "amount": 425})  # 5.50 more
     assert too_much.status_code == 422 and "419.50" in too_much.json()["error"]["message"]
     early = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-3", "deposit_date": "2026-06-01"})
     assert early.status_code == 422
@@ -168,3 +168,13 @@ def test_expense_sheet_import(client):
     text2 = "Date,Driver ID,Driver name,Amount,Type\n12-May-26,D-103,Yousef Al-Amri,40,Petrol\n12-May-26,D-103,Yousef Al-Amri,25,Lunch\n12-May-26,D-104,Bilal Ahmed,900,Final settlement\n12-May-26,D-104,Bilal Ahmed,150,Incentive\n"
     r = client.post("/api/expenses/import", files={"file": ("e2.csv", text2.encode(), "text/csv")}).json()
     assert [x["category"] for x in r["rows"]] == ["fuel", "other", "settlement", "incentive"] and "saved as Other" in r["rows"][1]["problems"][0]
+
+
+def test_a_deposit_rounded_to_whole_notes_counts_as_deposited():
+    from app.deposits import status_for
+    day = date(2026, 6, 1)
+    later = date(2026, 6, 10)
+    assert status_for(day, 792304, 792500, later) == "deposited"   # 7,923.04 to the bank, slip 7,925 in notes
+    assert status_for(day, 792304, 792300, later) == "deposited"   # the 0.04 halalas stay behind
+    assert status_for(day, 792304, 793000, later) == "over"        # 5.96 more is not rounding
+    assert status_for(day, 792304, 790000, later) == "short"
