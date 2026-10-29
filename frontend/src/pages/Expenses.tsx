@@ -1,11 +1,12 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { todayIso, useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
 import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
+import { useCountUp, Van } from "../components/VanArt";
 import { Badge, Empty, ErrorBox, FormError, Loading, Modal, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
-import type { Advances, Driver, ExpenseDay, ExpenseRow } from "../types";
+import type { Advances, DepositLedger, Driver, ExpenseDay, ExpenseRow } from "../types";
 
 const CATEGORIES = [
   { value: "fuel", text: "Fuel" }, { value: "toll", text: "Toll" }, { value: "parking", text: "Parking" },
@@ -167,6 +168,98 @@ function AdvancesPanel({ refreshKey, onChanged }: { refreshKey: number; onChange
   );
 }
 
+/** The van at the fuel pump, with the day's receipt printed beside it. */
+function FuelStop({ total, count, drivers }: { total: number; count: number; drivers: number }) {
+  const [printed, setPrinted] = useState(false);
+  useEffect(() => { const id = requestAnimationFrame(() => setPrinted(true)); return () => cancelAnimationFrame(id); }, []);
+  const zig = Array.from({ length: 24 }, (_, i) => `l${5} ${i % 2 ? -6 : 6}`).join(" ");
+  return (
+    <svg viewBox="0 0 520 270" className="h-full w-full" preserveAspectRatio="xMidYMid slice" role="img"
+      aria-label={`The van at the fuel pump, with a receipt for ${count} payments`}>
+      <rect width="520" height="270" fill="#fbf6ea" />
+      <circle cx="450" cy="58" r="105" fill="#f8eed9" />
+      <g fill="#fff" opacity=".95"><ellipse cx="300" cy="40" rx="30" ry="9" /><ellipse cx="322" cy="33" rx="18" ry="10" /></g>
+      <path d="M0 214H520" stroke="#ece2cb" strokeWidth="22" />
+      <path d="M0 214H520" stroke="#fff" strokeWidth="2" strokeDasharray="14 12" />
+      {/* the station: canopy, sign and pump */}
+      <rect x="62" y="58" width="272" height="20" rx="4" fill="#0f2e22" />
+      <rect x="62" y="78" width="272" height="5" fill="#e2b55a" />
+      <rect x="76" y="83" width="8" height="120" fill="#21503e" />
+      <g transform="translate(200 46)"><rect x="-34" y="-14" width="68" height="24" rx="5" fill="#e2b55a" />
+        <text y="3" fontSize="12" textAnchor="middle" fill="#0f2e22" fontWeight="800" letterSpacing="2">FUEL</text></g>
+      <g transform="translate(96 124)">
+        <rect width="44" height="80" rx="6" fill="#1d7a55" />
+        <rect x="7" y="9" width="30" height="18" rx="3" fill="#08201a" />
+        <text x="22" y="22" fontSize="9" textAnchor="middle" fill="#e2b55a" fontFamily="monospace" fontWeight="700">SAR</text>
+        <rect x="7" y="34" width="30" height="4" rx="2" fill="#9fbcae" />
+        <rect x="-4" y="78" width="52" height="6" rx="2" fill="#0f2e22" />
+        <path d="M44 40h6q6 0 6 8v26q0 8 8 8h18" stroke="#16211c" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+        <rect x="40" y="34" width="8" height="14" rx="2" fill="#16211c" />
+      </g>
+      {/* the van, parked at the pump */}
+      <g transform="translate(176 122) scale(.9)"><Van deposited late={false} spin={false} /></g>
+      {/* the receipt */}
+      <g transform="translate(362 40) rotate(4) scale(.82)">
+        <g style={{ clipPath: printed ? "inset(0 0 0 0)" : "inset(0 0 100% 0)", transition: "clip-path 1.2s cubic-bezier(.3,.7,.3,1) .2s" }}>
+          <path d={`M0 0h120v170 ${zig.replace(/l5/g, "l-5").split(" ").join(" ")}z`} fill="#fff" stroke="#e1e6e0" />
+          <text x="60" y="22" fontSize="11" textAnchor="middle" fill="#0f2e22" fontWeight="800" letterSpacing="1.5">CODesk</text>
+          <text x="60" y="35" fontSize="7" textAnchor="middle" fill="#7c8781" letterSpacing="1.2">PAID OUT RECEIPT</text>
+          <path d="M12 46h96" stroke="#c9cfc8" strokeDasharray="3 3" />
+          <g fontSize="9" fill="#4a5650">
+            <text x="12" y="64">Payments</text><text x="108" y="64" textAnchor="end" fontWeight="700" fill="#16211c">{count}</text>
+            <text x="12" y="80">Drivers</text><text x="108" y="80" textAnchor="end" fontWeight="700" fill="#16211c">{drivers}</text>
+          </g>
+          <g stroke="#e8ece6" strokeWidth="5" strokeLinecap="round"><path d="M12 96h60M12 108h80M12 120h48" /></g>
+          <path d="M12 132h96" stroke="#c9cfc8" strokeDasharray="3 3" />
+          <text x="12" y="152" fontSize="9" fill="#4a5650">TOTAL</text>
+          <text x="108" y="153" fontSize="13" textAnchor="end" fill="#86590c" fontWeight="800">{fmtMoney(total)}</text>
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+/** The day's paid-out total, big, with how much of the day's cash it took. */
+function PaidOutHero({ day, t, drivers }: { day: string; t: ExpenseDay["totals"]; drivers: number }) {
+  const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1`).data?.rows?.find((r) => r.date === day);
+  const shown = useCountUp(t.total);
+  const cash = dep?.cash_received ?? 0;
+  const share = cash ? Math.min(100, (t.total / cash) * 100) : 0;
+  return (
+    <section aria-label="Paid out" className="mb-6 grid overflow-hidden rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(22,33,28,.06),0_20px_40px_-24px_rgba(22,33,28,.35)] lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+      <div className="min-w-0 p-6 sm:p-9">
+        <p className="text-sm font-semibold text-ink-soft">Paid out to drivers · {fmtDay(day)}</p>
+        <p className="num mt-2 text-[2.75rem] font-extrabold leading-none tracking-tight text-brass-dark sm:text-7xl">
+          <span className="whitespace-nowrap">{fmtMoney(shown)}</span>
+          <span className="ml-2 inline-block whitespace-nowrap text-xl font-semibold text-ink-faint sm:text-2xl">SAR</span>
+        </p>
+        <p className="mt-4 text-[15px] text-ink-soft">
+          {t.count} {t.count === 1 ? "payment" : "payments"} · {drivers} {drivers === 1 ? "driver" : "drivers"}
+          {t.by_category.length > 0 && <> · {t.by_category.map((c) => `${c.category_text} ${fmtMoney(c.amount)}`).join(" · ")}</>}
+        </p>
+        {cash > 0 && (
+          <div className="mt-6 border-t border-paper-line pt-5">
+            <p className="mb-2 flex justify-between text-xs text-ink-faint">
+              <span>From the day's cash <span className="num font-semibold text-ink">{fmtMoney(cash)}</span></span>
+              <span className="num">{share.toFixed(1)}% paid out</span>
+            </p>
+            <div className="flex h-3 overflow-hidden rounded-full bg-leaf-soft" role="img" aria-label={`${share.toFixed(1)}% of the day's cash paid out`}>
+              <span className="rounded-full bg-gradient-to-r from-brass-glow to-brass" style={{ width: `${Math.max(share, t.total ? 1.5 : 0)}%` }} />
+            </div>
+            <p className="mt-2 flex justify-between text-xs">
+              <span className="text-brass-dark">Paid out <span className="num font-semibold">{fmtMoney(t.total)}</span></span>
+              <span className="text-leaf-dark">To the bank <span className="num font-semibold">{fmtMoney(dep?.to_deposit ?? 0)}</span></span>
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="h-52 min-w-0 sm:h-64 lg:h-auto lg:min-h-[17rem]">
+        <FuelStop key={day} total={t.total} count={t.count} drivers={drivers} />
+      </div>
+    </section>
+  );
+}
+
 const EXPENSE_PREVIEW = [
   { label: "Driver", cell: (r: PreviewRow) => <><span className="num font-medium">{(r.driver_code as string) ?? "-"}</span> <span className="text-ink-soft">{r.driver_name as string}</span></> },
   { label: "Category", cell: (r: PreviewRow) => <span className="text-ink-soft">{r.category_text as string}</span> },
@@ -206,9 +299,11 @@ export default function Expenses() {
       )}
       <DayPicker refreshKey={version} />
 
+      {data && t && t.count > 0 && <PaidOutHero day={day} t={t} drivers={new Set(data.rows.map((r) => r.driver_id)).size} />}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0">
           {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
+            <>
             <Panel flush title={`Paid out on ${fmtDay(day)}`}
               action={<span className="text-sm text-ink-soft">Total <Money value={t.total} className="font-semibold text-ink" /> SAR</span>}>
               {t.by_category.length > 0 && (
@@ -258,6 +353,7 @@ export default function Expenses() {
                 </div>
               )}
             </Panel>
+            </>
           )}
         </div>
         <AdvancesPanel refreshKey={version} onChanged={changed} />
