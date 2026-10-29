@@ -5,7 +5,7 @@ import { Icon } from "../components/icons";
 import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, fmtWhen, send, useApi } from "../lib";
-import type { Machine, PairedBy, PosDay, PosRow } from "../types";
+import type { Driver, Machine, PairedBy, PosDay, PosRow } from "../types";
 
 const driverCell = (r: PreviewRow) => r.driver_code
   ? <><span className="num font-medium">{r.driver_code as string}</span> <span className="text-ink-soft">{r.driver_name as string}</span></>
@@ -87,7 +87,10 @@ function MachinesPanel({ machines, rows, onChanged }: { machines: Machine[]; row
   const [other, setOther] = useState<Record<number, string>>({});
   const free = machines.filter((m) => !m.driver_id);
   const paired = machines.filter((m) => m.driver_id);
-  const withOrders = rows.filter((r) => r.order_count > 0);
+  // any active driver can be chosen: a driver whose card orders were all closed as cash has no POS orders at all
+  const drivers = useApi<Driver[]>("/drivers").data ?? [];
+  const posIds = new Set(rows.filter((r) => r.order_count > 0).map((r) => r.driver_id));
+  const others = drivers.filter((d) => d.active && !posIds.has(d.id));
 
   async function pair(m: Machine, driverId: number | null) {
     setBusy(m.id); setError(null);
@@ -125,7 +128,12 @@ function MachinesPanel({ machines, rows, onChanged }: { machines: Machine[]; row
                     <select aria-label={`Other driver for machine ${m.terminal}`} className="field !mt-0 !w-auto" value={other[m.id] ?? ""}
                       onChange={(e) => setOther({ ...other, [m.id]: e.target.value })}>
                       <option value="">Another driver...</option>
-                      {withOrders.map((r) => <option key={r.driver_id} value={r.driver_id}>{r.driver_code} {r.driver_name}</option>)}
+                      <optgroup label="Drivers with POS orders">
+                        {rows.filter((r) => r.order_count > 0).map((r) => <option key={r.driver_id} value={r.driver_id}>{r.driver_code} {r.driver_name}</option>)}
+                      </optgroup>
+                      {others.length > 0 && <optgroup label="Drivers without POS orders in the system">
+                        {others.map((d) => <option key={d.id} value={d.id}>{d.code} {d.name}</option>)}
+                      </optgroup>}
                     </select>
                     {other[m.id] && <button disabled={busy === m.id} onClick={() => pair(m, Number(other[m.id]))} className="btn-primary">Match</button>}
                   </span>
