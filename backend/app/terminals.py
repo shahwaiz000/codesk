@@ -158,6 +158,23 @@ def pair(machine_id: int, body: PairIn, db: Session = Depends(get_db), user: str
     return {"id": m.id, "driver_id": m.driver_id, "paired_by": m.paired_by or None}
 
 
+@router.delete("/machines/{machine_id}")
+def remove(machine_id: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    """Remove a machine total typed or imported by mistake. A matched machine is unmatched first."""
+    m = db.get(TerminalTotal, machine_id)
+    if not m:
+        raise HTTPException(404, "This machine total does not exist")
+    if m.driver_id:
+        raise HTTPException(409, "Undo the match with the driver first, then remove the machine")
+    day = m.business_date
+    audit.record(db, user, "deleted", "terminal", m.id, f"Machine {m.terminal} on {day.isoformat()} ({to_sar(m.amount):,.2f}) removed")
+    db.delete(m)
+    db.flush()
+    sync_handovers(db, day, user)
+    db.commit()
+    return {"removed": True}
+
+
 # ---------------------------------------------------------------- the terminal sheet
 
 def _amount(raw, problems: list[str]) -> int | None:

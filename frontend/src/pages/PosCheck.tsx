@@ -93,6 +93,12 @@ function MachinesPanel({ machines, rows, onChanged }: { machines: Machine[]; row
   const posIds = new Set(rows.filter((r) => r.order_count > 0).map((r) => r.driver_id));
   const others = drivers.filter((d) => d.active && !posIds.has(d.id));
 
+  async function remove(m: Machine) {
+    setBusy(m.id); setError(null);
+    try { await send(`/pos/machines/${m.id}`, "DELETE"); onChanged(); }
+    catch (err) { setError((err as Error).message); }
+    setBusy(null);
+  }
   async function pair(m: Machine, driverId: number | null) {
     setBusy(m.id); setError(null);
     try { await send(`/pos/machines/${m.id}`, "PUT", { driver_id: driverId }); onChanged(); }
@@ -138,6 +144,8 @@ function MachinesPanel({ machines, rows, onChanged }: { machines: Machine[]; row
                     </select>
                     {other[m.id] && <button disabled={busy === m.id} onClick={() => pair(m, Number(other[m.id]))} className="btn-primary">Match</button>}
                   </span>
+                  <button disabled={busy === m.id} onClick={() => remove(m)} className="btn-quiet ml-auto self-center text-xs"
+                    title="Remove this machine total if it was entered by mistake">Remove</button>
                 </div>
               </li>
             ))}

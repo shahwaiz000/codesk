@@ -170,6 +170,10 @@ def test_machines_without_owner_are_paired_by_exact_amount(client):
     # and can undo a pair
     client.put(f"/api/pos/machines/{free['64800006']['id']}", json={"driver_id": None})
     assert client.get("/api/pos", params={"date": d}).json()["totals"]["unpaired"] == 1
+    # a machine entered by mistake is removed, but only once it has no driver
+    assert client.delete(f"/api/pos/machines/{free['64800005']['id']}").status_code == 409
+    assert client.delete(f"/api/pos/machines/{free['64800006']['id']}").json() == {"removed": True}
+    assert client.get("/api/pos", params={"date": d}).json()["totals"]["machines_total"] == 570.5
 
 
 def test_date_headings():
