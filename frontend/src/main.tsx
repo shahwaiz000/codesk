@@ -5,6 +5,7 @@ import "./index.css";
 import { AuthGate } from "./auth";
 import { BusinessDayProvider } from "./businessDay";
 import Layout from "./components/Layout";
+import Ask from "./pages/Ask";
 import Collections from "./pages/Collections";
 import Dashboard from "./pages/Dashboard";
 import Deposits from "./pages/Deposits";
@@ -27,6 +28,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="expenses" element={<Expenses />} />
             <Route path="deposits" element={<Deposits />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="ask" element={<Ask />} />
             <Route path="drivers" element={<Drivers />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />

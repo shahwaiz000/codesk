@@ -66,3 +66,29 @@ Be honest. Something like: "Yes, I used an AI coding assistant for much of the c
 ## What to say for a data or business analyst role
 
 "The app is really a data pipeline with a person in the loop. Raw files come in, get cleaned and validated, are matched against each other, and the exceptions go to someone to decide. The results come out as a dashboard and as reports. That's the same thinking I'd bring to analysis work: get the data right first, make the differences visible, and keep a record of every decision."
+
+## What to say for an AI automation role
+
+**The 30-second version.** "I automated my own daily cash desk end to end. The day's files are dropped in a folder and CODesk recognises, checks and imports them by itself, matches the POS machines to drivers, flags unusual amounts, and prepares a morning summary at 8:30. Where a rule is not enough I added AI: it reads handwritten bank slips and answers questions about the figures. But the AI never decides alone: plain arithmetic checks what it read, and a person confirms."
+
+**The pipeline (automation).**
+1. *Watch folder*: a new file is recognised by its columns, not its name (collection report, terminal sheet, expense sheet, driver list, or a slip PDF/photo).
+2. *Validation*: the same checks as the Import buttons; only good rows are saved; problem files go to a Problems folder and show on the dashboard.
+3. *Matching*: POS machines move between drivers daily, so each machine is matched by its registered terminal or by an exact amount; on real data 26 of 30 matched by themselves.
+4. *Anomaly detection*: "usual" is the median of the last 90 days per driver and per kind of payment; 3x usual and at least 50 SAR above it is flagged. The median is used because one odd payment cannot pull it up.
+5. *Scheduling*: the morning summary is prepared on working days at a set time.
+
+**The AI parts, and the guardrails.**
+- *Slip reader*: a vision model reads the handwritten slip into JSON (date, total, amount in words, each note line). CODesk then checks every line (notes x count), the lines against the total, the words against the total, and finds the one day whose cash matches within rounding. In testing on a real slip, the check caught a line that did not add up.
+- *Ask CODesk*: the model is given tools (a day's figures, a period, one driver, a ranking, the open items), not the database. It calls them and answers from the results only, and every tool call is shown under the answer. This is how you keep an LLM from inventing numbers.
+- *Two engines*: a local model through Ollama (private: nothing leaves the computer) or Google Gemini's free tier through its OpenAI-compatible API. Because Google may use free-tier data, the cloud engine is blocked in code unless CODesk runs on demo data. The rule is enforced by the software, not only written on the screen.
+
+**Lessons you can tell honestly.**
+- The local vision model did not fit my 8 GB laptop (about 2 GB free); I made CODesk fall back to a smaller model, show the real error, and free the memory after each slip, then added the cloud engine for demo data.
+- A first version said "nothing to deposit" logic was strict; real bank slips are rounded to whole notes, so a deposit within a few riyals now counts as deposited, and the rounding is shown.
+- The real report showed that orders are closed only when paid in full at my desk, so the "counted cash" check was useless there; I made it a setting instead of forcing one process on every desk.
+
+**A 3-minute AI demo (demo mode, Gemini).**
+1. Bank deposits: *Make a demo slip*, then *Read a slip* with it. Show the checks and record it with one click.
+2. Ask CODesk: "Which 3 drivers collected the most cash this month?", then open *Figures used*.
+3. Dashboard: the unusual fuel payment (4.8x the driver's usual) and the morning summary on the Reports page.

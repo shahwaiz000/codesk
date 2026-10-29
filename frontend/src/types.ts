@@ -98,3 +98,8 @@ export interface Unusual {
   amount: number; usual: number | null; ratio: number | null; page: string; text: string; expense_id?: number;
   review: { note: string; by: string } | null;
 }
+
+export interface AiStatus {
+  engine: "local" | "gemini"; demo_mode: boolean; gemini_model: string; has_key: boolean; key_hint: string; ack: boolean;
+  ready: boolean; reason: string;
+}

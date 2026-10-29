@@ -11,7 +11,7 @@ export interface SlipDraft {
   denominations: { note: number | null; count: number | null; amount: number | null }[];
   checks: SlipCheck[]; business_date: string | null; deposit_date: string | null; has_image: boolean;
 }
-interface AiStatus { ready: boolean; ollama: boolean; model: string; small_model: string; has_model: boolean; models: string[] }
+interface AiStatus { ready: boolean; ollama: boolean; model: string; small_model: string; has_model: boolean; models: string[]; engine?: string; reason?: string }
 
 /** How to switch the local AI on, shown until it is ready. */
 function AiSetup({ ai }: { ai: AiStatus }) {
@@ -165,7 +165,15 @@ export default function SlipReader({ days, onRecorded }: { days: DepositDay[]; o
         Scan or photograph the bank slip and read it here, or drop it in the watch folder. The AI on this computer reads the date, total and
         every note line; CODesk checks the sums and finds the day's cash it belongs to. You confirm it with one click.
       </p>
-      {ai && !ai.ready && <AiSetup ai={ai} />}
+      {ai && !ai.ready && (ai.engine === "gemini"
+        ? <p className="rounded-lg bg-brass-soft/60 p-4 text-sm text-brass-dark">{ai.reason} <a href="/settings" className="font-medium underline">AI settings</a></p>
+        : <AiSetup ai={ai} />)}
+      {ai?.engine === "gemini" && ai.ready && (
+        <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+          <span className="rounded-full bg-leaf-soft px-2.5 py-0.5 text-xs font-semibold text-leaf-dark">Google Gemini · demo data</span>
+          No demo slip at hand? <a href="/api/slips/demo-slip" className="font-medium text-leaf-dark underline underline-offset-2">Make a demo slip</a> for the day waiting to be deposited, then read it.
+        </p>
+      )}
       {reading && (
         <p className="flex items-center gap-3 rounded-lg bg-paper px-4 py-3 text-sm text-ink-soft" role="status">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-leaf border-t-transparent" />

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, morning, slip_reader, unusual, watcher
+from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, ai, ask, morning, slip_reader, unusual, watcher
 from .deps import current_user
 from .config import settings
 from .database import Base, SessionLocal, add_missing_columns, engine, get_db
@@ -50,6 +50,8 @@ app.include_router(watcher.router)
 app.include_router(slip_reader.router)
 app.include_router(unusual.router)
 app.include_router(morning.router)
+app.include_router(ai.router)
+app.include_router(ask.router)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins.split(","), allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 

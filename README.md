@@ -54,6 +54,10 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 **Morning summary.** The last business day on one page, at the top of the Reports page: cash collected, POS against the system, paid out, where the cash stands on its way to the bank, what is due at the bank today and what needs attention. Copy it as text into WhatsApp or an email, or download the PDF. Set a time, and every working morning (not Friday) CODesk saves the PDF and the text by itself in a *Morning summaries* folder next to the watch folder.
 
+**Ask CODesk (AI).** Questions in plain English ("Which 3 drivers collected the most cash this month?"). The AI is given tools, the same calculations the pages use (a day's figures, a period, one driver, a ranking, the open items), not the database; it calls them and answers from the results only, and every tool call is shown under the answer.
+
+**Two AI engines.** The local AI on this computer (Ollama, private), or Google Gemini's free tier through its OpenAI-compatible API, which works on any laptop. Google may use what is sent on its free tier, so CODesk only allows the cloud engine in demo mode, with the fictional data: real company data never leaves the computer. In demo mode, *Make a demo slip* draws a fictional hand-filled slip for the day waiting to be deposited, to try the slip reader.
+
 **Drivers.** Driver IDs, hubs and POS terminal IDs (one terminal per active driver), added one by one or imported from a CSV or Excel list (existing drivers are updated, never doubled, and an empty cell never wipes a saved value). Each handover keeps the terminal used that day, so moving a machine to another driver does not change old days. A driver with records cannot be deleted, only made inactive.
 
 **Activity log and login.** Every change is saved with who made it, when, and the old and new amounts. Log entries cannot be edited or deleted, which is also blocked in the database layer. One owner account, scrypt password hashing, an HttpOnly session cookie, lockout after five wrong passwords, and changes from unknown websites are refused.
@@ -65,7 +69,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 102 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 108 backend tests (pytest) and 16 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 
@@ -111,7 +115,9 @@ npm test
 npm run dev
 ```
 
-Open http://localhost:5173 and create your owner account. To start again from fresh demo data, stop the backend and delete `backend\codesk.db`. The API documentation is at http://127.0.0.1:8000/docs.
+Open http://localhost:5173 and create your owner account.
+
+**Demo mode next to your real data.** In Window 1, before starting the backend, run `$env:DATABASE_URL="sqlite:///./codesk-demo.db"` and `$env:SEED_DEMO_DATA="true"`. These only last until the window is closed, so a new window starts with your real data again. To start again from fresh demo data, stop the backend and delete `backend\codesk.db`. The API documentation is at http://127.0.0.1:8000/docs.
 
 **Forgot the password?** Stop the backend (Ctrl + C), run `python -m app.reset_password` in the backend folder and type a new one. It shows your username, ends all saved logins and writes the reset to the activity log.
 
@@ -132,6 +138,8 @@ backend/app/
   slip_reader.py  reads deposit slips with a local AI model, then checks the sums
   unusual.py      unusual amounts, learned from the desk's own history
   morning.py      the morning summary, and preparing it by itself each working morning
+  ai.py           the AI engine: local (Ollama) or Google Gemini, demo data only
+  ask.py          Ask CODesk: questions answered with CODesk's own calculations as tools
   deposits.py     the cash-to-deposit ledger and deposit slips
   dashboard.py    the day at a glance and the needs-attention list
   reports.py      Excel and PDF reports

@@ -18,6 +18,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+import zlib
 from datetime import date
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from . import audit, deposits
+from . import ai, audit, deposits
 from .config import settings
 from .database import get_db
 from .deps import current_user, parse_day
@@ -173,6 +174,22 @@ def ask_model(png: bytes) -> dict:
                       "and read the slip again")
 
 
+def ask_cloud(db: Session, png: bytes) -> dict:
+    """The same reading through the cloud engine (demo data only, see ai.py)."""
+    shape = json.dumps(SCHEMA["properties"])
+    content = [{"type": "text", "text": PROMPT + f" Answer with one JSON object with these fields: {shape}"},
+               ai.image_part(base64.b64encode(png).decode())]
+    try:
+        msg = ai.chat(db, [{"role": "user", "content": content}], json_mode=True, timeout=settings.slip_timeout)
+        return ai.parse_json(msg.get("content") or "")
+    except ai.AiProblem as e:
+        raise SlipProblem(str(e))
+
+
+def read_with_engine(db: Session, png: bytes) -> dict:
+    return ask_cloud(db, png) if ai.engine(db) == "gemini" else ask_model(png)
+
+
 # ---------------------------------------------------------------- checking
 
 WORDS = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
@@ -283,7 +300,7 @@ def _read_picture(db: Session, scan: SlipScan, png: bytes, user: str) -> SlipSca
     filename = scan.filename
     scan.status, scan.error = "failed", ""
     try:
-        fields = ask_model(png)
+        fields = read_with_engine(db, png)
         result = check(fields, db)
         scan.fields = json.dumps(fields)
         scan.checks = json.dumps(result["checks"])
@@ -313,8 +330,13 @@ def slip_dict(s: SlipScan) -> dict:
 
 
 @router.get("/ai")
-def ai():
-    return ai_status()
+def ai_ready(db: Session = Depends(get_db)):
+    """Is the slip reader ready? With the cloud engine, that is the engine's own status."""
+    if ai.engine(db) == "gemini":
+        st = ai.status(db)
+        return {"ready": st["ready"], "ollama": True, "model": st["gemini_model"], "small_model": "", "has_model": True,
+                "models": [], "engine": "gemini", "reason": st["reason"]}
+    return {**ai_status(), "engine": "local", "reason": ""}
 
 
 @router.get("")
@@ -342,6 +364,89 @@ def retry(sid: int, db: Session = Depends(get_db), user: str = Depends(current_u
     if not s or s.status != "failed" or not path.exists():
         raise HTTPException(404, "This slip cannot be read again: upload it once more")
     return slip_dict(_read_picture(db, s, path.read_bytes(), user))
+
+
+ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
+TENS = "twenty thirty forty fifty sixty seventy eighty ninety".split()
+
+
+def number_to_words(n: int) -> str:
+    def small(x: int) -> str:
+        out = []
+        if x >= 100:
+            out.append(f"{ONES[x // 100]} hundred")
+            x %= 100
+        if x >= 20:
+            out.append(TENS[x // 10 - 2] + (f" {ONES[x % 10]}" if x % 10 else ""))
+        elif x:
+            out.append(ONES[x])
+        return " ".join(out)
+    if n == 0:
+        return "zero"
+    parts = []
+    if n >= 1000:
+        parts.append(f"{small(n // 1000)} thousand")
+        n %= 1000
+    if n:
+        parts.append(small(n))
+    return " ".join(parts)
+
+
+@router.get("/demo-slip")
+def demo_slip(db: Session = Depends(get_db)):
+    """A fictional, hand-filled deposit slip for the latest day still to deposit, to try the slip reader
+    in demo mode. Only in demo mode: it is made from the fictional demo figures."""
+    if not settings.seed_demo_data:
+        raise HTTPException(404, "Demo slips are only made in demo mode")
+    from PIL import Image, ImageDraw, ImageFont
+    row = next((r for r in deposits.ledger(db) if r["pending"] > 0), None)
+    if not row:
+        raise HTTPException(409, "No day is waiting to be deposited")
+    total = int(-(-row["pending"] // 5) * 5)  # rounded up to whole notes, as at the bank
+    left, lines = total, []
+    for note in (500, 200, 100, 50, 20, 10, 5):
+        count = left // note
+        if count:
+            lines.append((note, count))
+            left -= note * count
+    day = next(r for r in deposits.ledger(db) if r["date"] == row["date"])["due_on"]
+    img = Image.new("RGB", (1100, 1450), "#fdfdfb")
+    d = ImageDraw.Draw(img)
+
+    def font(size, bold=False):
+        for name in (("DejaVuSans-Bold.ttf", "arialbd.ttf") if bold else ("DejaVuSans.ttf", "arial.ttf")):
+            try:
+                return ImageFont.truetype(name, size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+    pen, ink = "#1d3fa3", "#222222"
+    d.rectangle((30, 30, 1070, 1420), outline=ink, width=3)
+    d.text((60, 55), "COASTAL NATIONAL BANK", fill="#0f2e22", font=font(38, True))
+    d.text((60, 105), "Cash deposit slip  (fictional bank, demo data)", fill="#7c8781", font=font(22))
+    d.text((60, 180), "Date", fill=ink, font=font(24)); d.text((180, 172), f"{date.fromisoformat(day):%d-%b-%Y}", fill=pen, font=font(34))
+    d.text((560, 180), "Slip no.", fill=ink, font=font(24)); d.text((680, 172), f"CN-{zlib.crc32(row['date'].encode()) % 90000 + 10000}", fill=pen, font=font(34))
+    d.text((60, 250), "Customer", fill=ink, font=font(24)); d.text((200, 242), "CODesk Logistics (demo)", fill=pen, font=font(32))
+    y = 340
+    d.text((560, y - 50), "Cash denomination", fill=ink, font=font(24, True))
+    for note in (500, 200, 100, 50, 20, 10, 5, 1):
+        count = dict(lines).get(note)
+        d.rectangle((540, y, 1040, y + 58), outline="#999999", width=1)
+        d.text((560, y + 14), f"{note} x", fill=ink, font=font(26))
+        if count:
+            d.text((680, y + 6), str(count), fill=pen, font=font(36))
+            d.text((850, y + 6), f"{note * count:,}", fill=pen, font=font(36))
+        y += 58
+    d.rectangle((540, y, 1040, y + 66), outline=ink, width=2)
+    d.text((560, y + 18), "TOTAL", fill=ink, font=font(26, True))
+    d.text((820, y + 10), f"{total:,}", fill=pen, font=font(40))
+    d.text((60, y + 110), "Amount in words", fill=ink, font=font(24))
+    d.text((60, y + 150), number_to_words(total), fill=pen, font=font(32))
+    d.text((60, 1360), "Depositor signature", fill="#999999", font=font(20))
+    out = io.BytesIO()
+    img.rotate(-0.8, expand=False, fillcolor="#fdfdfb").save(out, "PNG")
+    return Response(out.getvalue(), media_type="image/png",
+                    headers={"Content-Disposition": f'attachment; filename="demo slip {row["date"]}.png"'})
 
 
 @router.get("/{sid}/image")

@@ -15,6 +15,7 @@ export const NAV: { title: string; items: NavItem[] }[] = [
   ] },
   { title: "Records", items: [
     { to: "/reports", label: "Reports", icon: "report" },
+    { to: "/ask", label: "Ask CODesk", icon: "spark" },
     { to: "/drivers", label: "Drivers", icon: "drivers" },
   ] },
 ];

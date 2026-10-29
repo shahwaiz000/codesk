@@ -2,7 +2,7 @@ import { FormEvent, useState } from "react";
 import { useAuth } from "../auth";
 import { Empty, ErrorBox, FormError, Loading, PageHeader, Panel } from "../components/ui";
 import { fmtWhen, send, useApi } from "../lib";
-import type { AuditEntry } from "../types";
+import type { AiStatus, AuditEntry } from "../types";
 
 function PasswordForm() {
   const [current, setCurrent] = useState("");
@@ -141,6 +141,75 @@ function WatchFolder() {
   );
 }
 
+function AiEngine() {
+  const { data, reload } = useApi<AiStatus>("/ai");
+  const [engine, setEngine] = useState<"local" | "gemini" | null>(null);
+  const [key, setKey] = useState("");
+  const [model, setModel] = useState<string | null>(null);
+  const [ack, setAck] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!data) return null;
+  const e = engine ?? data.engine;
+  const sure = ack ?? data.ack;
+
+  async function save(ev: FormEvent) {
+    ev.preventDefault();
+    setBusy(true); setError(null); setNote(null);
+    try {
+      await send("/ai", "PUT", { engine: e, gemini_key: key || null, gemini_model: model || null, ack: e === "gemini" && sure });
+      setKey(""); setEngine(null); setAck(null); setModel(null); reload(); setNote("Saved.");
+    } catch (err) { setError((err as Error).message); }
+    setBusy(false);
+  }
+  async function test() {
+    setBusy(true); setError(null); setNote(null);
+    try { const r = await send<{ reply: string }>("/ai/test", "POST"); setNote(`The AI answered: "${r.reply}"`); }
+    catch (err) { setError((err as Error).message); }
+    setBusy(false);
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <p className="text-sm text-ink-soft">Reads deposit slips and answers questions on the Ask CODesk page.</p>
+      {[
+        { v: "local" as const, t: "Local AI on this computer (Ollama)", d: "Private: nothing leaves this computer. Needs about 3 GB of free memory." },
+        { v: "gemini" as const, t: "Google Gemini, free (cloud), demo data only", d: "Works on any laptop, in seconds. Google may use what is sent on its free tier, so CODesk only allows it in demo mode, with the fictional data." },
+      ].map((o) => (
+        <label key={o.v} className={`flex cursor-pointer gap-3 rounded-lg border p-4 ${e === o.v ? "border-ledger-700 bg-leaf-soft/40" : "border-paper-line hover:bg-paper/60"}`}>
+          <input type="radio" name="engine" className="mt-1 h-4 w-4 accent-ledger-700" checked={e === o.v} onChange={() => setEngine(o.v)} />
+          <span><span className="block text-sm font-medium">{o.t}</span><span className="mt-1 block text-sm text-ink-soft">{o.d}</span></span>
+        </label>
+      ))}
+      {e === "gemini" && (
+        <div className="space-y-3 rounded-lg border border-paper-line p-4">
+          {!data.demo_mode && <p className="rounded-md bg-short-soft px-3 py-2 text-sm text-short-dark">CODesk is running with your real data, so the cloud AI stays off. Start CODesk in demo mode to use it.</p>}
+          <label className="block text-sm font-medium">Gemini API key
+            <input className="field" type="password" autoComplete="off" value={key} onChange={(ev) => setKey(ev.target.value)}
+              placeholder={data.has_key ? `Saved (${data.key_hint}). Type a new one to replace it` : "Paste your free key from aistudio.google.com"} /></label>
+          <label className="block text-sm font-medium">Model
+            <input className="field" value={model ?? data.gemini_model} onChange={(ev) => setModel(ev.target.value)} /></label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-ledger-700" checked={sure} onChange={(ev) => setAck(ev.target.checked)} />
+            <span>I will use the cloud AI only with demo (fictional) data, never with company data.</span>
+          </label>
+        </div>
+      )}
+      <FormError message={error} />
+      {note && <p role="status" className="rounded-md bg-leaf-soft px-3 py-2 text-sm text-leaf-dark">{note}</p>}
+      <p className={`flex items-center gap-2 text-sm ${data.ready ? "text-leaf-dark" : "text-brass-dark"}`}>
+        <span className={`h-2 w-2 rounded-full ${data.ready ? "bg-leaf" : "bg-brass"}`} />
+        {data.ready ? `Ready: ${data.engine === "gemini" ? "Google Gemini" : "local AI"}` : data.reason}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy || (e === "gemini" && !sure)} className="btn-primary">Save</button>
+        <button type="button" disabled={busy || !data.ready} onClick={test} className="btn-quiet">Test the AI</button>
+      </div>
+    </form>
+  );
+}
+
 export default function Settings() {
   const { username, loginEnabled } = useAuth();
   const log = useApi<AuditEntry[]>("/audit?limit=200");
@@ -154,6 +223,7 @@ export default function Settings() {
         </div>
         <div className="min-w-0 space-y-6">
         <Panel title="Watch folder"><WatchFolder /></Panel>
+        <Panel title="AI engine"><AiEngine /></Panel>
         <Panel title="Activity log" flush className="">
           <p className="border-b border-paper-line px-5 py-3 text-xs text-ink-faint">Every change made in CODesk, newest first. Entries cannot be edited or deleted.</p>
           {log.loading && !log.data ? <Loading /> : log.error ? <div className="p-5"><ErrorBox message={log.error} retry={log.reload} /></div>
