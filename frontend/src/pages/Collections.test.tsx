@@ -70,7 +70,7 @@ test("a desk that closes orders only when paid sees cash per driver without coun
   mockApi("paid");
   render(<BusinessDayProvider><Collections /></BusinessDayProvider>);
   const hero = await screen.findByRole("region", { name: "Cash collected" });
-  expect(within(hero).getByText("1,950.00")).toBeInTheDocument(); // the day's cash, shown large
+  expect((await within(hero).findAllByText("1,950.00", {}, { timeout: 3000 })).length).toBeGreaterThan(0); // counts up to the day's cash
   expect(screen.queryByText("Cash counted")).not.toBeInTheDocument();
   expect(screen.queryByText("Short")).not.toBeInTheDocument();
   expect(screen.queryByText("Not handed over yet")).not.toBeInTheDocument();

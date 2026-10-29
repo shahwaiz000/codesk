@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import HandoverDialog from "../components/HandoverDialog";
@@ -23,40 +23,129 @@ const STATUS_TONE: Record<string, string> = {
   due_today: "bg-brass-glow text-ledger-950", not_due: "bg-white/15 text-white", nothing: "bg-white/15 text-white",
 };
 
-/** The day's cash, large enough to read across the room, with where it stands on its way to the bank. */
+/** Counts up to the value when it changes, so the day's cash "arrives" on screen. Still for reduced motion. */
+function useCountUp(value: number, ms = 900) {
+  const [shown, setShown] = useState(value);
+  useEffect(() => {
+    const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (still || !value) { setShown(value); return; }
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - start) / ms);
+      setShown(Math.round(value * (1 - Math.pow(1 - k, 3)) * 100) / 100);
+      if (k < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value, ms]);
+  return shown;
+}
+
+/** A guilloche rosette, the engraved flower printed on banknotes. */
+function Rosette({ className = "" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="-100 -100 200 200" className={className} fill="none" stroke="currentColor">
+      {Array.from({ length: 18 }, (_, i) => (
+        <ellipse key={i} rx="92" ry="34" transform={`rotate(${i * 10})`} strokeWidth="0.55" />
+      ))}
+      {Array.from({ length: 12 }, (_, i) => (
+        <ellipse key={`b${i}`} rx="56" ry="20" transform={`rotate(${i * 15 + 7})`} strokeWidth="0.5" />
+      ))}
+      <circle r="40" strokeWidth="0.8" /><circle r="44" strokeWidth="0.4" />
+    </svg>
+  );
+}
+
+const STEP_DONE = { deposited: 3, over: 3, short: 2, overdue: 2, due_today: 2, not_due: 1, nothing: 0 } as Record<string, number>;
+
+/** The day's cash printed as a banknote: big enough to read across the room, with its way to the bank under it. */
 function CashHero({ day, t }: { day: string; t: CollectionDay["totals"] }) {
   const dep = useApi<DepositLedger>(`/deposits?end=${day}&count=1`).data?.rows?.find((r) => r.date === day);
+  const shown = useCountUp(t.cash_received);
+  const cashShare = t.total ? Math.round((t.cash_received / t.total) * 100) : 0;
+  const serial = day.split("-").join("");
+  const reached = dep ? STEP_DONE[dep.status] ?? 1 : 1;
+  const stops = [
+    { label: "Collected", value: t.cash_received },
+    { label: "Paid out", value: dep ? -dep.paid_out : 0 },
+    { label: "To the bank", value: dep?.to_deposit ?? t.cash_received },
+  ];
   return (
-    <section aria-label="Cash collected" className="relative mb-6 overflow-hidden rounded-panel bg-ledger-900 text-white shadow-pop">
-      {/* banknote guilloche */}
-      <svg aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-[28rem] w-[28rem] text-brass-glow/15" viewBox="0 0 200 200" fill="none" stroke="currentColor" strokeWidth="0.6">
-        {Array.from({ length: 14 }, (_, i) => <ellipse key={i} cx="100" cy="100" rx={30 + i * 5} ry={18 + i * 4} transform={`rotate(${i * 13} 100 100)`} />)}
-      </svg>
-      <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-medium uppercase tracking-wider text-brass-glow">
-            <Icon name="cash" className="h-5 w-5" />Cash collected · {fmtDay(day)}
-          </p>
-          <p className="num mt-3 text-[2.6rem] font-semibold leading-none tracking-tight sm:text-6xl lg:text-7xl">
-            <span className="whitespace-nowrap">{fmtMoney(t.cash_received)}</span>{" "}
-            <span className="inline-block whitespace-nowrap align-baseline text-lg font-normal text-ledger-300 sm:ml-2 sm:text-2xl">SAR</span>
-          </p>
-          {dep && (
-            <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ledger-300">
-              <span>Paid out <span className="num font-medium text-white">{fmtMoney(dep.paid_out)}</span></span>
-              <span aria-hidden="true">→</span>
-              <span>To the bank <span className="num font-semibold text-white">{fmtMoney(dep.to_deposit)}</span></span>
-              <span>due {fmtDay(dep.due_on)}</span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_TONE[dep.status] ?? "bg-white/15 text-white"}`}>{dep.status_text}</span>
+    <section aria-label="Cash collected" className="relative mb-6 overflow-hidden rounded-panel bg-ledger-900 p-4 text-white shadow-pop sm:p-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_15rem]">
+        {/* the note */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-ledger-800 via-ledger-900 to-ledger-950 p-1.5">
+          <div className="relative h-full rounded-lg border border-brass-glow/40 p-5 sm:p-7"
+            style={{ backgroundImage: "repeating-linear-gradient(115deg, rgba(226,181,90,.05) 0 1px, transparent 1px 7px)" }}>
+            <div className="pointer-events-none absolute inset-1.5 rounded-md border border-dashed border-brass-glow/20" />
+            <Rosette className="pointer-events-none absolute -right-10 top-1/2 h-64 w-64 -translate-y-1/2 text-brass-glow/25 sm:right-4 sm:h-72 sm:w-72" />
+            <div className="pointer-events-none absolute right-[3.25rem] top-1/2 hidden -translate-y-1/2 flex-col items-center text-center sm:right-[7.4rem] sm:flex">
+              <span className="num text-3xl font-semibold text-brass-glow">{t.drivers}</span>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-ledger-300">drivers</span>
+            </div>
+
+            <div className="relative flex items-start justify-between gap-3">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-brass-glow">
+                <span className="grid h-6 w-6 place-items-center rounded-full border border-brass-glow/60 text-[10px] tracking-normal">CD</span>
+                Cash collected
+              </p>
+              <p className="num text-xs uppercase tracking-[0.18em] text-ledger-300">{fmtDay(day)}</p>
+            </div>
+
+            <p className="num relative mt-6 text-[2.6rem] font-semibold leading-none tracking-tight sm:text-6xl lg:text-7xl">
+              <span className="whitespace-nowrap">{fmtMoney(shown)}</span>{" "}
+              <span className="inline-block whitespace-nowrap align-baseline text-lg font-normal text-brass-glow sm:ml-1 sm:text-2xl">SAR</span>
             </p>
-          )}
+
+            {/* cash and card, as one ribbon */}
+            <div className="relative mt-6 max-w-sm">
+              <div className="flex h-2 overflow-hidden rounded-full bg-white/10" role="img" aria-label={`Cash ${cashShare}% of the money collected, card ${100 - cashShare}%`}>
+                <span className="bg-brass-glow" style={{ width: `${cashShare}%` }} />
+                <span className="bg-ledger-300/60" style={{ width: `${100 - cashShare}%` }} />
+              </div>
+              <p className="mt-2 flex justify-between text-xs text-ledger-300">
+                <span><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-brass-glow" />Cash {cashShare}%</span>
+                <span>Card {100 - cashShare}%<span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-ledger-300/60" /></span>
+              </p>
+            </div>
+
+            <p className="num relative mt-6 text-[10px] uppercase tracking-[0.25em] text-ledger-300/80">
+              Nº {serial} · {t.orders} orders closed
+            </p>
+          </div>
         </div>
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-4 border-t border-white/10 pt-5 text-sm lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-          <div><dt className="text-ledger-300">POS (card)</dt><dd className="num mt-1 text-xl font-semibold">{fmtMoney(t.pos_amount)}</dd></div>
-          <div><dt className="text-ledger-300">Total collected</dt><dd className="num mt-1 text-xl font-semibold">{fmtMoney(t.total)}</dd></div>
-          <div><dt className="text-ledger-300">Drivers</dt><dd className="num mt-1 text-xl font-semibold">{t.drivers}</dd></div>
-          <div><dt className="text-ledger-300">Orders closed</dt><dd className="num mt-1 text-xl font-semibold">{t.orders}</dd></div>
-        </dl>
+
+        {/* its way to the bank */}
+        <div className="flex flex-col justify-between gap-5">
+          <ol className="relative space-y-4 pl-7" aria-label="On its way to the bank">
+            <span aria-hidden="true" className="absolute bottom-3 left-[9px] top-3 border-l-2 border-dashed border-brass-glow/40" />
+            {stops.map((st, i) => (
+              <li key={st.label} className="relative">
+                <span aria-hidden="true" className={`absolute -left-7 top-1 grid h-5 w-5 place-items-center rounded-full border-2 ${i < reached ? "border-brass-glow bg-brass-glow text-ledger-950" : "border-brass-glow/50 bg-ledger-900"}`}>
+                  {i < reached && <Icon name="check" className="h-3 w-3" />}
+                </span>
+                <p className="text-xs text-ledger-300">{st.label}</p>
+                <p className="num text-lg font-semibold">{fmtMoney(st.value)}</p>
+              </li>
+            ))}
+            <li className="relative">
+              <span aria-hidden="true" className="absolute -left-7 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-white text-ledger-900">
+                <Icon name="bank" className="h-3 w-3" />
+              </span>
+              {dep ? (
+                <p className="text-sm">
+                  <span className={`mr-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_TONE[dep.status] ?? "bg-white/15 text-white"}`}>{dep.status_text}</span>
+                  <span className="text-xs text-ledger-300">due {fmtDay(dep.due_on)}</span>
+                </p>
+              ) : <p className="text-xs text-ledger-300">Bank</p>}
+            </li>
+          </ol>
+          <dl className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4 text-sm">
+            <div><dt className="text-xs text-ledger-300">POS (card)</dt><dd className="num font-semibold">{fmtMoney(t.pos_amount)}</dd></div>
+            <div><dt className="text-xs text-ledger-300">Total</dt><dd className="num font-semibold">{fmtMoney(t.total)}</dd></div>
+          </dl>
+        </div>
       </div>
     </section>
   );
