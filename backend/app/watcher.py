@@ -181,6 +181,11 @@ def _loop(stop: threading.Event):
             scan(db)
         except Exception:  # noqa: BLE001  the watcher must keep running; the next look tries again
             db.rollback()
+        try:
+            from . import morning
+            morning.maybe_run(db)
+        except Exception:  # noqa: BLE001
+            db.rollback()
         finally:
             db.close()
 

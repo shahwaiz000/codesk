@@ -3,7 +3,7 @@ import { todayIso, useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
 import { ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
-import { fmtDay, useApi } from "../lib";
+import { fmtDay, send, useApi } from "../lib";
 import type { ReportPreview } from "../types";
 
 function Downloads({ base }: { base: string }) {
@@ -51,6 +51,93 @@ function workingDaysBack(end: string, n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+interface Morning {
+  today: string; day: string | null; lines: { label: string; value: string; note: string }[]; attention: string[]; due: string[];
+  text: string; time: string; folder: string; last: string | null;
+}
+
+/** The morning summary: yesterday on one page, to copy into WhatsApp or email, or prepared by itself each morning. */
+function MorningSummary() {
+  const [version, setVersion] = useState(0);
+  const { data, error, loading, reload } = useApi<Morning>(`/morning?v=${version}`);
+  const [time, setTime] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const chosen = time ?? data?.time ?? "";
+
+  async function copy() {
+    if (!data) return;
+    try { await navigator.clipboard.writeText(data.text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { setProblem("Copy is blocked by the browser: select the text and copy it with Ctrl + C"); }
+  }
+  async function saveTime(value: string) {
+    setProblem(null); setMsg(null);
+    try { await send("/morning/settings", "PUT", { time: value }); setTime(null); setVersion((v) => v + 1);
+      setMsg(value ? `Every working morning at ${value}, CODesk saves the summary as PDF and text.` : "Turned off."); }
+    catch (e) { setProblem((e as Error).message); }
+  }
+  async function prepare() {
+    setProblem(null); setMsg(null);
+    try { const r = await send<{ folder: string }>("/morning/prepare", "POST"); setMsg(`Saved in ${r.folder}`); }
+    catch (e) { setProblem((e as Error).message); }
+  }
+
+  if (loading && !data) return <Panel title="Morning summary"><Loading /></Panel>;
+  if (error) return <Panel title="Morning summary"><ErrorBox message={error} retry={reload} /></Panel>;
+  if (!data || !Array.isArray(data.lines)) return null;
+  return (
+    <Panel title="Morning summary" className="xl:col-span-2"
+      action={<span className="text-sm text-ink-soft">{data.day ? `For ${fmtDay(data.day)}` : "Nothing recorded yet"}</span>}>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <dl className="divide-y divide-paper-line rounded-lg border border-paper-line">
+            {data.lines.map((l) => (
+              <div key={l.label} className="flex flex-wrap items-baseline gap-x-3 px-4 py-2.5 text-sm">
+                <dt className="w-32 shrink-0 text-ink-soft">{l.label}</dt>
+                <dd className="num font-semibold">{l.value}</dd>
+                {l.note && <dd className="text-xs text-ink-faint">{l.note}</dd>}
+              </div>
+            ))}
+          </dl>
+          {data.due.length > 0 && (
+            <div className="mt-4 rounded-lg bg-brass-soft/60 px-4 py-3 text-sm text-brass-dark">
+              <p className="font-semibold">To the bank today</p>
+              <ul className="mt-1 list-disc pl-5">{data.due.map((d) => <li key={d}>{d}</li>)}</ul>
+            </div>
+          )}
+          <div className="mt-4 text-sm">
+            <p className="font-semibold">Needs attention</p>
+            {data.attention.length ? <ul className="mt-1 list-disc space-y-0.5 pl-5 text-ink-soft">{data.attention.map((a) => <li key={a}>{a}</li>)}</ul>
+              : <p className="mt-1 text-leaf-dark">Nothing. All clear.</p>}
+          </div>
+        </div>
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={copy} className="btn-primary"><Icon name={copied ? "check" : "receipt"} className="h-4 w-4" />{copied ? "Copied" : "Copy text"}</button>
+            <a href="/api/morning/pdf" className="btn-quiet"><Icon name="download" className="h-4 w-4" />PDF</a>
+          </div>
+          <p className="text-xs text-ink-faint">Paste the text in WhatsApp or an email to your manager, or attach the PDF.</p>
+          <div className="rounded-lg border border-paper-line p-4">
+            <p className="text-sm font-medium">Prepare it by itself every morning</p>
+            <p className="mt-1 text-xs text-ink-soft">On working days (not Friday) at this time, CODesk saves the PDF and text in
+              <span className="block break-all font-mono text-[11px] text-ink">{data.folder}</span></p>
+            <form onSubmit={(e) => { e.preventDefault(); saveTime(chosen); }} className="mt-3 flex flex-wrap items-center gap-2">
+              <input type="time" aria-label="Time" className="field !mt-0 !w-36" value={chosen} onChange={(e) => setTime(e.target.value)} />
+              <button disabled={chosen === (data.time ?? "")} className="btn-primary !py-1.5">Save</button>
+              {data.time && <button type="button" onClick={() => saveTime("")} className="btn-quiet !py-1.5">Turn off</button>}
+              <button type="button" onClick={prepare} className="btn-quiet !py-1.5">Save files now</button>
+            </form>
+            {data.last && <p className="mt-2 text-xs text-ink-faint">Last prepared on {fmtDay(data.last, true)}</p>}
+            {msg && <p role="status" className="mt-2 rounded-md bg-leaf-soft px-3 py-1.5 text-xs text-leaf-dark">{msg}</p>}
+            {problem && <p className="mt-2 text-xs text-short">{problem}</p>}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 export default function Reports() {
   const { day } = useBusinessDay();
   const today = todayIso();
@@ -69,6 +156,7 @@ export default function Reports() {
     <>
       <PageHeader title="Reports" subtitle="Download the finance report for one business day or for a period. Excel has a sheet per area with working totals; the PDF is ready to print and sign." />
       <div className="grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">
+        <MorningSummary />
         <Panel title="Daily finance report">
           <p className="-mt-2 mb-4 text-sm text-ink-soft">One page: key figures, every driver's cash handover, POS differences with their reviews, expenses, deposit slips, open items and sign-off lines.</p>
           <DayPicker />

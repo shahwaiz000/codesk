@@ -52,6 +52,8 @@ I built it around the work I do every day as a finance executive at a delivery c
 
 **Unusual amounts.** CODesk learns what is normal from the desk's own last 90 days and points out what is not: a payment several times the driver's usual for that kind of expense (or the desk's usual when he has no history yet), a day whose total paid out is several times a usual day, and a driver whose POS machine disagreed with his orders on several of his recent days. "Usual" is the median, so one odd payment does not move it, and small amounts never alarm. Alerts show on the dashboard and on the Expenses page, and can be marked "looks fine" with a note.
 
+**Morning summary.** The last business day on one page, at the top of the Reports page: cash collected, POS against the system, paid out, where the cash stands on its way to the bank, what is due at the bank today and what needs attention. Copy it as text into WhatsApp or an email, or download the PDF. Set a time, and every working morning (not Friday) CODesk saves the PDF and the text by itself in a *Morning summaries* folder next to the watch folder.
+
 **Drivers.** Driver IDs, hubs and POS terminal IDs (one terminal per active driver), added one by one or imported from a CSV or Excel list (existing drivers are updated, never doubled, and an empty cell never wipes a saved value). Each handover keeps the terminal used that day, so moving a machine to another driver does not change old days. A driver with records cannot be deleted, only made inactive.
 
 **Activity log and login.** Every change is saved with who made it, when, and the old and new amounts. Log entries cannot be edited or deleted, which is also blocked in the database layer. One owner account, scrypt password hashing, an HttpOnly session cookie, lockout after five wrong passwords, and changes from unknown websites are refused.
@@ -63,7 +65,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 100 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 102 backend tests (pytest) and 15 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 
@@ -129,6 +131,7 @@ backend/app/
   watcher.py      the watch folder: recognises and imports the day's files by itself
   slip_reader.py  reads deposit slips with a local AI model, then checks the sums
   unusual.py      unusual amounts, learned from the desk's own history
+  morning.py      the morning summary, and preparing it by itself each working morning
   deposits.py     the cash-to-deposit ledger and deposit slips
   dashboard.py    the day at a glance and the needs-attention list
   reports.py      Excel and PDF reports
