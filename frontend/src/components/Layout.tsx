@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
-import { byRegion, useStation } from "../stations";
+import { useStation } from "../stations";
+import { StationPicker } from "./StationPicker";
 import { Icon, IconName, Mark } from "./icons";
 
 type NavItem = { to: string; label: string; icon: IconName };
@@ -21,33 +22,6 @@ export const NAV: { title: string; items: NavItem[] }[] = [
     { to: "/stations", label: "Stations", icon: "warehouse" },
   ] },
 ];
-
-/** Which station the desk looks at: one warehouse, or all of them together. */
-export function StationPicker() {
-  const { station, stations, choose } = useStation();
-  const active = stations.filter((s) => s.active || s.id === station?.id);
-  return (
-    <label className="group relative mx-3 mb-6 block rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-brass-glow/40 hover:bg-white/[0.07]">
-      <span className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ledger-300/80">
-        <Icon name="pin" className="h-3.5 w-3.5 text-brass-glow" />Station
-      </span>
-      <span className="mt-0.5 flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm font-semibold text-white">{station ? station.name : "All stations"}</span>
-        <span className="num shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] font-medium text-ledger-300">{station ? station.code : active.length}</span>
-      </span>
-      {station?.region && <span className="block text-xs text-ledger-300/80">{station.region}</span>}
-      <select aria-label="Station" value={station ? String(station.id) : ""} onChange={(e) => choose(e.target.value ? Number(e.target.value) : null)}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
-        <option value="">All stations</option>
-        {byRegion(active).map(([region, list]) => (
-          <optgroup key={region} label={region}>
-            {list.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-          </optgroup>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 function Sidebar() {
   const { username, loginEnabled, logout } = useAuth();

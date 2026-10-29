@@ -18,35 +18,35 @@ from .models import Collection, Deposit, Driver, Expense, PosOrder, Station, Ter
 
 router = APIRouter(prefix="/api/stations", tags=["stations"])
 
-# (code, city, region): a station in each main city and governorate of the Kingdom
+# (code, city, region): a station in each of the Kingdom's 25 best-known cities; more can be added on the Stations page
 KSA = [
-    ("RUH", "Riyadh", "Riyadh"), ("KRJ", "Al Kharj", "Riyadh"), ("MJM", "Al Majmaah", "Riyadh"), ("ZUL", "Az Zulfi", "Riyadh"),
-    ("DWD", "Ad Dawadmi", "Riyadh"), ("WDD", "Wadi Ad Dawasir", "Riyadh"), ("AFL", "Al Aflaj", "Riyadh"), ("SHQ", "Shaqra", "Riyadh"),
-    ("QWY", "Al Quwayiyah", "Riyadh"), ("MZH", "Al Muzahimiyah", "Riyadh"),
-    ("JED", "Jeddah", "Makkah"), ("MKH", "Makkah", "Makkah"), ("TIF", "Taif", "Makkah"), ("RAB", "Rabigh", "Makkah"),
-    ("QNF", "Al Qunfudhah", "Makkah"), ("LIT", "Al Lith", "Makkah"), ("KHL", "Khulais", "Makkah"),
-    ("MED", "Madinah", "Madinah"), ("YNB", "Yanbu", "Madinah"), ("ULA", "AlUla", "Madinah"), ("BDR", "Badr", "Madinah"),
-    ("MHD", "Mahd adh Dhahab", "Madinah"),
-    ("DMM", "Dammam", "Eastern Province"), ("KHB", "Khobar", "Eastern Province"), ("DHA", "Dhahran", "Eastern Province"),
-    ("JUB", "Jubail", "Eastern Province"), ("HOF", "Al Ahsa (Hofuf)", "Eastern Province"), ("QTF", "Qatif", "Eastern Province"),
-    ("HFB", "Hafar Al Batin", "Eastern Province"), ("KHF", "Khafji", "Eastern Province"), ("RTN", "Ras Tanura", "Eastern Province"),
-    ("ABQ", "Abqaiq", "Eastern Province"), ("NAR", "An Nairyah", "Eastern Province"),
-    ("BUR", "Buraidah", "Qassim"), ("UNZ", "Unaizah", "Qassim"), ("RAS", "Ar Rass", "Qassim"), ("BKY", "Al Bukayriyah", "Qassim"),
-    ("AHB", "Abha", "Asir"), ("KMS", "Khamis Mushait", "Asir"), ("BSH", "Bisha", "Asir"), ("MHY", "Muhayil", "Asir"),
-    ("NMS", "An Namas", "Asir"),
-    ("TUU", "Tabuk", "Tabuk"), ("DBA", "Duba", "Tabuk"), ("TMA", "Tayma", "Tabuk"), ("UMJ", "Umluj", "Tabuk"),
-    ("HAS", "Hail", "Hail"),
-    ("ARR", "Arar", "Northern Borders"), ("RAE", "Rafha", "Northern Borders"), ("TUI", "Turaif", "Northern Borders"),
-    ("GIZ", "Jazan", "Jazan"), ("SAB", "Sabya", "Jazan"), ("ABR", "Abu Arish", "Jazan"),
-    ("EAM", "Najran", "Najran"), ("SHW", "Sharurah", "Najran"),
-    ("ABT", "Al Baha", "Al Baha"), ("BLJ", "Baljurashi", "Al Baha"),
-    ("SKK", "Sakaka", "Al Jouf"), ("QRY", "Al Qurayyat", "Al Jouf"), ("DMJ", "Dumat Al Jandal", "Al Jouf"),
+    ("RUH", "Riyadh", "Riyadh"), ("KRJ", "Al Kharj", "Riyadh"),
+    ("JED", "Jeddah", "Makkah"), ("MKH", "Makkah", "Makkah"), ("TIF", "Taif", "Makkah"),
+    ("MED", "Madinah", "Madinah"), ("YNB", "Yanbu", "Madinah"), ("ULA", "AlUla", "Madinah"),
+    ("DMM", "Dammam", "Eastern Province"), ("KHB", "Khobar", "Eastern Province"), ("JUB", "Jubail", "Eastern Province"),
+    ("HOF", "Al Ahsa", "Eastern Province"), ("QTF", "Qatif", "Eastern Province"), ("HFB", "Hafar Al Batin", "Eastern Province"),
+    ("BUR", "Buraidah", "Qassim"), ("UNZ", "Unaizah", "Qassim"),
+    ("AHB", "Abha", "Asir"), ("KMS", "Khamis Mushait", "Asir"),
+    ("TUU", "Tabuk", "Tabuk"), ("HAS", "Hail", "Hail"), ("ARR", "Arar", "Northern Borders"),
+    ("GIZ", "Jazan", "Jazan"), ("EAM", "Najran", "Najran"), ("ABT", "Al Baha", "Al Baha"), ("SKK", "Sakaka", "Al Jouf"),
 ]
+# stations an earlier version added that are no longer in the list: removed while nothing uses them
+RETIRED = {"MJM", "ZUL", "DWD", "WDD", "AFL", "SHQ", "QWY", "MZH", "RAB", "QNF", "LIT", "KHL", "BDR", "MHD", "DHA", "KHF",
+           "RTN", "ABQ", "NAR", "RAS", "BKY", "BSH", "MHY", "NMS", "DBA", "TMA", "UMJ", "RAE", "TUI", "SAB", "ABR", "SHW",
+           "BLJ", "QRY", "DMJ"}
 
 
 def ensure_defaults(db: Session) -> int:
-    """On a database with no stations yet, add the station list. Returns how many were added."""
+    """On a database with no stations yet, add the station list. Returns how many were added. On an
+    older database, the stations dropped from the list are removed if no driver or record uses them."""
     if db.query(Station).count():
+        for st in db.query(Station).filter(Station.code.in_(RETIRED)):
+            used = db.query(Driver).filter(Driver.station_id == st.id).count() + sum(
+                db.query(m).execution_options(all_stations=True).filter(m.station_id == st.id).count()
+                for m in (Collection, Expense, Deposit, PosOrder, TerminalTotal))
+            if not used:
+                db.delete(st)
+        db.commit()
         return 0
     for code, city, region in KSA:
         db.add(Station(code=code, name=city, city=city, region=region))

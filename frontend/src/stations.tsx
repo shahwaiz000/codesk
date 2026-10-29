@@ -39,13 +39,18 @@ export function StationProvider({ children }: { children: ReactNode }) {
   return <StationContext.Provider value={{ station, stations, choose, refresh, version }}>{children}</StationContext.Provider>;
 }
 
-/** Stations grouped by region, regions and stations in name order. */
+/* The biggest regions first, the way people think of the Kingdom. */
+const REGION_ORDER = ["Riyadh", "Makkah", "Eastern Province", "Madinah", "Qassim", "Asir", "Tabuk", "Hail", "Jazan", "Najran",
+  "Al Baha", "Al Jouf", "Northern Borders"];
+const rank = (r: string) => { const i = REGION_ORDER.indexOf(r); return i < 0 ? (r === "Other" ? 99 : 50) : i; };
+
+/** Stations grouped by region (biggest regions first), stations in name order. */
 export function byRegion<T extends { region: string; name: string }>(list: T[]): [string, T[]][] {
   const groups = new Map<string, T[]>();
   for (const s of list) {
     const key = s.region || "Other";
     groups.set(key, [...(groups.get(key) ?? []), s]);
   }
-  return [...groups.entries()].sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)))
+  return [...groups.entries()].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
     .map(([r, l]) => [r, [...l].sort((x, y) => x.name.localeCompare(y.name))]);
 }

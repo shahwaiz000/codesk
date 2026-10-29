@@ -96,3 +96,13 @@ def test_ask_can_compare_stations(client):
     with SessionLocal() as db:
         out = ask.t_stations(db, {"date": "2026-05-20"})
     assert "stations" in out and "totals" in out
+
+
+def test_old_extra_stations_are_removed_when_unused(client):
+    from app import stations
+    with SessionLocal() as db:
+        db.add(Station(code="SHQ", name="Shaqra", city="Shaqra", region="Riyadh"))
+        db.commit()
+        stations.ensure_defaults(db)
+        assert db.query(Station).filter(Station.code == "SHQ").count() == 0
+        assert len(KSA) == 25
