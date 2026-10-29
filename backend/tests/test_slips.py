@@ -99,10 +99,27 @@ def test_the_watch_folder_reads_slips(client, monkeypatch, tmp_path):
     client.put("/api/watch", json={"folder": ""})
 
 
-def test_the_ai_error_is_shown(monkeypatch):
+def test_a_smaller_model_is_used_when_the_bigger_one_does_not_fit(monkeypatch):
+    import json as _json
     import urllib.error
-    def fail(path, body=None, timeout=5):
-        raise urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b'{"error":"model requires more system memory (5.1 GiB) than is available (3.9 GiB)"}'))
-    monkeypatch.setattr(slip_reader, "_ollama", fail)
-    with pytest.raises(slip_reader.SlipProblem, match="ran out of memory"):
+    asked = []
+    def ollama(path, body=None, timeout=5):
+        if path == "/api/tags":
+            return {"models": [{"name": "qwen3-vl:4b"}, {"name": "qwen3-vl:2b"}]}
+        asked.append(body["model"])
+        if body["model"] == "qwen3-vl:4b":
+            raise urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b'{"error":"failed to allocate CPU_REPACK buffer"}'))
+        return {"response": _json.dumps(_slip())}
+    monkeypatch.setattr(slip_reader, "_ollama", ollama)
+    assert slip_reader.ask_model(b"png")["total"] == 1000 and asked == ["qwen3-vl:4b", "qwen3-vl:2b"]
+
+
+def test_without_the_small_model_the_message_says_what_to_download(monkeypatch):
+    import urllib.error
+    def ollama(path, body=None, timeout=5):
+        if path == "/api/tags":
+            return {"models": [{"name": "qwen3-vl:4b"}]}
+        raise urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b'{"error":"unable to allocate CPU_REPACK buffer"}'))
+    monkeypatch.setattr(slip_reader, "_ollama", ollama)
+    with pytest.raises(slip_reader.SlipProblem, match="ollama pull qwen3-vl:2b"):
         slip_reader.ask_model(b"png")

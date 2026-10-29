@@ -11,7 +11,7 @@ export interface SlipDraft {
   denominations: { note: number | null; count: number | null; amount: number | null }[];
   checks: SlipCheck[]; business_date: string | null; deposit_date: string | null; has_image: boolean;
 }
-interface AiStatus { ready: boolean; ollama: boolean; model: string; has_model: boolean }
+interface AiStatus { ready: boolean; ollama: boolean; model: string; small_model: string; has_model: boolean; models: string[] }
 
 /** How to switch the local AI on, shown until it is ready. */
 function AiSetup({ ai }: { ai: AiStatus }) {
@@ -20,7 +20,8 @@ function AiSetup({ ai }: { ai: AiStatus }) {
       <p className="font-semibold">{ai.ollama ? `The slip-reading model is not downloaded yet` : "The local AI is not running"}</p>
       <ol className="mt-2 list-decimal space-y-1 pl-5">
         {!ai.ollama && <li>Install <b>Ollama</b> from ollama.com (free), and open it once.</li>}
-        <li>In PowerShell, run <code className="rounded bg-white/70 px-1.5 py-0.5">ollama pull {ai.model}</code> (about 3.3 GB, once).</li>
+        <li>In PowerShell, run <code className="rounded bg-white/70 px-1.5 py-0.5">ollama pull {ai.small_model}</code> (about 1.9 GB, once). It fits a laptop with 8 GB of memory.
+          With 16 GB or more, <code className="rounded bg-white/70 px-1.5 py-0.5">ollama pull {ai.model}</code> reads handwriting better; CODesk uses it when it fits.</li>
         <li>Come back here and read the slip.</li>
       </ol>
       <p className="mt-2 text-xs">The AI runs on this computer, so your slips are never sent anywhere.</p>

@@ -107,14 +107,20 @@ def _ollama(path: str, body: dict | None = None, timeout: float = 5) -> dict:
         return json.loads(r.read())
 
 
-def ai_status() -> dict:
-    """Is the local AI ready? Ollama running, and the slip model downloaded."""
+def _downloaded() -> list[str] | None:
+    """The slip models downloaded in Ollama, best first; None when Ollama is not running."""
     try:
-        models = [m.get("name", "") for m in _ollama("/api/tags").get("models", [])]
+        names = {m.get("name", "") for m in _ollama("/api/tags").get("models", [])}
     except (urllib.error.URLError, OSError, ValueError):
-        return {"ready": False, "ollama": False, "model": settings.slip_model, "has_model": False}
-    has = any(m == settings.slip_model or m == settings.slip_model + ":latest" for m in models)
-    return {"ready": has, "ollama": True, "model": settings.slip_model, "has_model": has}
+        return None
+    return [m for m in (settings.slip_model, settings.slip_model_small) if m in names or m + ":latest" in names]
+
+
+def ai_status() -> dict:
+    """Is the local AI ready? Ollama running, and a slip model downloaded."""
+    have = _downloaded()
+    return {"ready": bool(have), "ollama": have is not None, "model": settings.slip_model, "small_model": settings.slip_model_small,
+            "has_model": bool(have), "models": have or []}
 
 
 def _error_text(e: urllib.error.HTTPError) -> str:
@@ -124,31 +130,46 @@ def _error_text(e: urllib.error.HTTPError) -> str:
         return ""
 
 
+def _no_room(why: str) -> bool:
+    w = why.lower()
+    return "memory" in w or "alloc" in w
+
+
 def ask_model(png: bytes) -> dict:
-    """Send the picture to the local model and get back what it read."""
-    body = {"model": settings.slip_model, "prompt": PROMPT, "images": [base64.b64encode(png).decode()],
-            "format": SCHEMA, "stream": False, "think": False,
-            "options": {"temperature": 0, "num_ctx": settings.slip_context}}
-    answer = None
-    for _ in range(2):
-        try:
-            answer = _ollama("/api/generate", body, timeout=settings.slip_timeout)
-            break
-        except urllib.error.HTTPError as e:
-            why = _error_text(e)
-            if "think" in why.lower() and "think" in body:  # an older Ollama or a model without the switch
-                body.pop("think")
-                continue
-            if "memory" in why.lower():
-                raise SlipProblem(f"The laptop ran out of memory for the AI ({why}). Close other programs, "
-                                  "especially browser tabs, and read the slip again")
-            raise SlipProblem(f"The AI could not read the slip: {why or e.code}")
-        except (urllib.error.URLError, OSError):
-            raise SlipProblem("The AI is not running. Start Ollama, then read the slip again")
-    try:
-        return json.loads(answer.get("response") or "{}")
-    except ValueError:
-        raise SlipProblem("The AI's answer could not be understood. Read the slip again")
+    """Send the picture to the local model and get back what it read. When the bigger model does not fit
+    in the laptop's memory, the smaller one is tried."""
+    models = _downloaded()
+    if models is None:
+        raise SlipProblem("The AI is not running. Start Ollama, then read the slip again")
+    if not models:
+        raise SlipProblem(f"No slip model is downloaded. In PowerShell run: ollama pull {settings.slip_model_small}")
+    image = base64.b64encode(png).decode()
+    why = ""
+    for model in models:
+        body = {"model": model, "prompt": PROMPT, "images": [image], "format": SCHEMA, "stream": False, "think": False,
+                "options": {"temperature": 0, "num_ctx": settings.slip_context}}
+        for _ in range(2):
+            try:
+                answer = _ollama("/api/generate", body, timeout=settings.slip_timeout)
+                try:
+                    return json.loads(answer.get("response") or "{}")
+                except ValueError:
+                    raise SlipProblem("The AI's answer could not be understood. Read the slip again")
+            except urllib.error.HTTPError as e:
+                why = _error_text(e) or str(e.code)
+                if "think" in why.lower() and "think" in body:  # an older Ollama, or a model without the switch
+                    body.pop("think")
+                    continue
+                break
+            except (urllib.error.URLError, OSError):
+                raise SlipProblem("The AI is not running, or stopped while reading. Start Ollama, then read the slip again")
+        if not _no_room(why):
+            raise SlipProblem(f"The AI could not read the slip: {why}")
+    if settings.slip_model_small not in models:
+        raise SlipProblem(f"The AI does not fit in this laptop's free memory. Download the smaller model: in PowerShell run "
+                          f"ollama pull {settings.slip_model_small}, then read the slip again")
+    raise SlipProblem("The AI does not fit in this laptop's free memory. Close other programs (browser tabs, Excel, Teams) "
+                      "and read the slip again")
 
 
 # ---------------------------------------------------------------- checking
