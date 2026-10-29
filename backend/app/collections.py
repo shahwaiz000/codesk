@@ -257,6 +257,84 @@ def _check_rows(db: Session, df, default_day: date | None) -> tuple[list[dict], 
     return out, counts
 
 
+def _is_order_report(df) -> bool:
+    """The delivery system's collection report: one line per order (or charge), with how it was collected."""
+    from .pos import ORDER_COLUMNS
+    return bool(find_column(df, ORDER_COLUMNS["order"]) and find_column(df, ORDER_COLUMNS["method"])
+                and find_column(df, ORDER_COLUMNS["amount"]) and find_column(df, COLUMNS["driver"]))
+
+
+def _check_report(db: Session, df, default_day: date | None) -> tuple[list[dict], dict]:
+    """Turn the order-level collection report into one handover per driver and day: the expected cash is
+    every line collected in cash (and the cash part of split payments), the orders are counted once each.
+    The report cannot know the cash counted at the desk: a new handover starts with the counted cash equal
+    to the expected cash, and an existing one keeps the counted cash already recorded."""
+    from .pos import ORDER_COLUMNS, is_pos, is_split
+    ocol, mcol, acol = (find_column(df, ORDER_COLUMNS[k]) for k in ("order", "method", "amount"))
+    dcol, ncol = find_column(df, COLUMNS["driver"]), find_column(df, COLUMNS["name"])
+    tcol = find_column(df, ORDER_COLUMNS["date"])
+    pay_col = find_column(df, ("paymentmethod", "paymenttype", "paymentmode"))
+    if pay_col == mcol:
+        pay_col = None
+    if not tcol and not default_day:
+        raise FileProblem("The file has no Date column, so choose the business date first")
+    drivers = {d.code.upper(): d for d in db.query(Driver)}
+    groups: dict[tuple, dict] = {}
+    bad = []
+    for i, r in df.iterrows():
+        line, problems = i + 2, []
+        code = clean_code(r[dcol])
+        day = read_date(r[tcol]) if tcol and str(r[tcol]).strip() else default_day
+        method = str(r[mcol]).strip()
+        if is_split(method):
+            part = str(r[pay_col]).strip() if pay_col else ""
+            method = part if part and not is_split(part) else ""
+            if not method:
+                problems.append("split payment without the part it was")
+        amount = to_halalas(r[acol]) if str(r[acol]).strip() else 0
+        if amount is None:
+            problems.append(f"amount '{r[acol]}' is not a number")
+        if not code:
+            problems.append("no driver ID")
+        if day is None:
+            problems.append("date not readable")
+        elif day > date.today():
+            problems.append("date is in the future")
+        if problems:
+            bad.append({"line": line, "status": "error", "problems": problems, "driver_code": code or None,
+                        "driver_name": "", "date": day.isoformat() if day else None, "orders": 0, "expected_cash": 0,
+                        "cash_received": 0, "pos_amount": 0, "difference": 0, "note": ""})
+            continue
+        g = groups.setdefault((day, code), {"line": line, "orders": set(), "cash": 0, "pos": 0,
+                                            "name": str(r[ncol]).strip() if ncol else ""})
+        g["orders"].add(clean_code(r[ocol]))
+        g["pos" if is_pos(method) else "cash"] += amount
+    out = []
+    for (day, code), g in sorted(groups.items(), key=lambda kv: kv[1]["line"]):
+        drv, problems = drivers.get(code), []
+        if not drv:
+            problems.append(f"unknown driver {code}. Import the drivers from this file first")
+        elif not drv.active:
+            problems.append(f"{code} is inactive")
+        existing = db.query(Collection).filter_by(business_date=day, driver_id=drv.id).first() if drv else None
+        expected, orders = g["cash"], len(g["orders"])
+        received = existing.cash_received if existing else expected
+        pos = existing.pos_amount if existing else 0
+        note = (existing.note if existing else "")
+        status = "error" if problems else "new"
+        if existing and not problems:
+            status = "same" if (existing.expected_cash, existing.orders) == (expected, orders) else "update"
+        notes = [] if problems else (["counted cash kept as recorded"] if existing else ["counted cash set to the system cash: change it if short"])
+        out.append({"line": g["line"], "status": status, "problems": problems + notes, "driver_code": code,
+                    "driver_name": drv.name if drv else g["name"], "date": day.isoformat(), "orders": orders,
+                    "expected_cash": to_sar(expected), "cash_received": to_sar(received), "pos_amount": to_sar(pos),
+                    "system_pos": to_sar(g["pos"]), "difference": to_sar(received - expected), "note": note,
+                    "_driver": drv, "_day": day, "_h": (orders, expected, received, pos)})
+    out += bad
+    counts = {k: sum(o["status"] == k for o in out) for k in ("new", "update", "same", "error")}
+    return out, counts
+
+
 @router.post("/import")
 async def import_file(file: UploadFile = File(...), business_date: str = Form(""), commit: bool = Form(False),
                       db: Session = Depends(get_db), user: str = Depends(current_user)):
@@ -265,7 +343,7 @@ async def import_file(file: UploadFile = File(...), business_date: str = Form(""
     default_day = not_future(parse_day(business_date, "business_date")) if business_date else None
     try:
         df = read_upload(file.filename or "", await file.read(1 + 5_000_000))
-        rows, counts = _check_rows(db, df, default_day)
+        rows, counts = (_check_report if _is_order_report(df) else _check_rows)(db, df, default_day)
     except FileProblem as e:
         raise HTTPException(422, str(e))
     if not rows:

@@ -197,7 +197,7 @@ export default function Collections() {
       {importing && (
         <ImportDialog day={day} title="Import handovers" endpoint="/collections/import" templateUrl="/api/collections/template"
           noun={["handover", "handovers"]} columns={HANDOVER_PREVIEW}
-          intro="Upload the day's driver list as CSV or Excel. Each row needs a driver ID, the expected cash and the cash received. POS total, orders and a note are optional."
+          intro="Upload your system's collection report as it is (one line per order): each driver's expected cash is added up from his cash lines, and the counted cash starts equal to it, so you only change the drivers who were short. Or upload a list with one row per driver: driver ID, expected cash and cash received."
           onClose={() => setImporting(false)}
           onSaved={(dates) => { setImporting(false); if (dates.length === 1) setDay(dates[0]); changed(); }} />
       )}

@@ -139,3 +139,35 @@ def test_template_downloads(client):
     r = client.get("/api/collections/template")
     assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
     assert "Driver ID,Driver name,Date" in r.text
+
+
+def test_the_systems_order_report_becomes_one_handover_per_driver(client):
+    """The delivery system's collection report has a line per order and charge. Collections adds the
+    cash lines up per driver into the expected cash; POS lines are not cash."""
+    d = "2026-05-06"
+    text = ("Waybill Number,Charge Category,Payment Method,Collect Method,Actual Received Amount,DA Code,DA Name,Collection Operation Time\n"
+            "WB-71,COD,Cash,Cash,100.00,D-101,Faisal,2026-05-06 21:10:00\n"
+            "WB-71,Import VAT,Cash,Cash,5.00,D-101,Faisal,2026-05-06 21:10:00\n"        # same order, another charge
+            "WB-72,COD,POS,POS,300.00,D-101,Faisal,2026-05-06 21:11:00\n"              # card: not cash
+            "WB-73,COD,Cash,part pos and part cash,40.00,D-101,Faisal,2026-05-06 21:12:00\n"
+            "WB-73,COD,POS,part pos and part cash,60.00,D-101,Faisal,2026-05-06 21:12:00\n"
+            "WB-74,COD,Cash,Cash,250.50,D-102,Imran,2026-05-06 20:00:00\n"
+            "WB-75,COD,Cash,Cash,10.00,X-404,Nobody,2026-05-06 20:00:00\n")
+    r = client.post("/api/collections/import", files={"file": ("report.csv", text.encode(), "text/csv")}).json()
+    rows = {x["driver_code"]: x for x in r["rows"]}
+    assert rows["D-101"]["expected_cash"] == 145.0 and rows["D-101"]["orders"] == 3 and rows["D-101"]["system_pos"] == 360.0
+    assert rows["D-101"]["cash_received"] == 145.0 and rows["D-101"]["status"] == "new"
+    assert rows["D-102"]["expected_cash"] == 250.5 and rows["X-404"]["status"] == "error"
+    client.post("/api/collections/import", files={"file": ("report.csv", text.encode(), "text/csv")}, data={"commit": "true"})
+    day = client.get("/api/collections", params={"date": d}).json()
+    h = next(x for x in day["rows"] if x["driver_code"] == "D-101")
+    assert (h["expected_cash"], h["cash_received"], h["orders"]) == (145.0, 145.0, 3)
+
+    # the desk records a shortage; importing a later report keeps the counted cash
+    client.put("/api/collections", json={"business_date": d, "driver_id": h["driver_id"], "orders": 3,
+                                         "expected_cash": 145, "cash_received": 140})
+    later = text + "WB-76,COD,Cash,Cash,20.00,D-101,Faisal,2026-05-06 22:30:00\n"
+    r = client.post("/api/collections/import", files={"file": ("r2.csv", later.encode(), "text/csv")}, data={"commit": "true"}).json()
+    assert next(x for x in r["rows"] if x["driver_code"] == "D-101")["status"] == "update"
+    h = next(x for x in client.get("/api/collections", params={"date": d}).json()["rows"] if x["driver_code"] == "D-101")
+    assert (h["expected_cash"], h["cash_received"], h["difference"]) == (165.0, 140.0, -25.0)
