@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import { api, rememberStation, withStation } from "../lib";
 import { StationProvider } from "../stations";
-import { StationPicker } from "./StationPicker";
+import { StationPicker } from "./Layout";
 
 afterEach(() => { vi.restoreAllMocks(); rememberStation(""); });
 
@@ -20,18 +20,15 @@ test("choosing a station sends it with every request and on download links", asy
     return new Response(JSON.stringify(String(input).includes("/stations") ? LIST : {}), { status: 200 });
   });
   render(<MemoryRouter><StationProvider><StationPicker /></StationProvider></MemoryRouter>);
-  const picker = await screen.findByRole("button", { name: "Station" });
-  await userEvent.click(picker);
+  const picker = await screen.findByLabelText("Station");
   await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(3));
-  await userEvent.type(screen.getByPlaceholderText("Find a city or code"), "jed");
-  expect(screen.getAllByRole("option")).toHaveLength(1);
-  await userEvent.keyboard("{Enter}");
-  expect(await screen.findByText("Jeddah")).toBeInTheDocument();
+  expect(screen.getAllByText("All stations")).toHaveLength(2);
+  await userEvent.selectOptions(picker, "2");
+  expect(await screen.findByText("Makkah")).toBeInTheDocument();
   await api("/dashboard");
   expect(headers[headers.length - 1]).toBe("2");
   expect(withStation("/api/reports/day?date=2026-10-27")).toBe("/api/reports/day?date=2026-10-27&station=2");
-  await userEvent.click(picker);
-  await userEvent.click(screen.getByRole("option", { name: /All stations/ }));
+  await userEvent.selectOptions(picker, "");
   await api("/dashboard");
   expect(headers[headers.length - 1]).toBeNull();
 });
