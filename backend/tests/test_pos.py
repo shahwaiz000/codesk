@@ -167,6 +167,9 @@ def test_machines_without_owner_are_paired_by_exact_amount(client):
     rows = {x["driver_code"]: x for x in p["rows"]}
     assert rows["D-106"]["status"] == "terminal_over" and rows["D-106"]["difference"] == 15.0 and rows["D-106"]["paired_by"] == "hand"
     assert p["totals"]["unpaired"] == 0 and p["totals"]["difference"] == 15.0
+    # a cash-only driver that day has nothing to check on the POS page
+    client.put("/api/collections", json={"business_date": d, "driver_id": did(client, "D-109"), "expected_cash": 100, "cash_received": 100})
+    assert "D-109" not in {x["driver_code"] for x in client.get("/api/pos", params={"date": d}).json()["rows"]}
     # and can undo a pair
     client.put(f"/api/pos/machines/{free['64800006']['id']}", json={"driver_id": None})
     assert client.get("/api/pos", params={"date": d}).json()["totals"]["unpaired"] == 1

@@ -13,7 +13,10 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
 
-from . import pos
+from xml.sax.saxutils import escape
+
+from . import collections, pos
+from .config import settings
 from .database import get_db
 from .deposits import ledger
 from .deps import current_user, parse_day
@@ -64,6 +67,7 @@ def report_data(db: Session, first: date, last: date) -> dict:
         "first": first, "last": last, "summary": summary,
         "totals": {k: total(k) for k in ("expected_cash", "cash_received", "cash_difference", "pos_system", "pos_terminal",
                                          "pos_difference", "paid_out", "returned", "to_deposit", "deposited", "pending")},
+        "cash_mode": collections.cash_mode(db),
         "handovers": [{"date": h.business_date.isoformat(), "driver_code": h.driver.code, "driver_name": h.driver.name,
                        "orders": h.orders, "expected_cash": to_sar(h.expected_cash), "cash_received": to_sar(h.cash_received),
                        "difference": to_sar(h.cash_received - h.expected_cash), "pos_terminal": h.pos_terminal,
@@ -179,19 +183,19 @@ def build_xlsx(data: dict, title: str, user: str) -> bytes:
                           ("deposited", "Deposited", 15), ("pending", "Pending", 13), ("deposit_status", "Deposit status", 18)],
            data["summary"], ("expected_cash", "cash_received", "cash_difference", "pos_system", "pos_terminal", "pos_difference",
                              "paid_out", "returned", "to_deposit", "deposited", "pending"))
-    _sheet(wb, "Collections", [("date", "Business day", 13), ("driver_code", "Driver ID", 10), ("driver_name", "Driver", 22),
+    _sheet(wb, "Collections", [("date", "Business day", 13), ("driver_code", "Driver ID", 15), ("driver_name", "Driver", 22),
                                ("orders", "Orders", 8), ("expected_cash", "Cash expected", 15), ("cash_received", "Cash received", 15),
                                ("difference", "Difference", 13), ("pos_terminal", "POS terminal", 13), ("pos_amount", "POS total", 13),
                                ("note", "Note", 34)],
            data["handovers"], ("expected_cash", "cash_received", "difference", "pos_amount"))
-    _sheet(wb, "POS check", [("date", "Business day", 13), ("driver_code", "Driver ID", 10), ("driver_name", "Driver", 22),
+    _sheet(wb, "POS check", [("date", "Business day", 13), ("driver_code", "Driver ID", 15), ("driver_name", "Driver", 22),
                              ("terminal", "Terminal", 12), ("order_count", "POS orders", 11), ("system_total", "System total", 14),
                              ("terminal_total", "Terminal total", 14), ("difference", "Difference", 13), ("status_text", "Status", 18),
                              ("review_text", "Review", 40)],
            [{**p, "review_text": (f"{p['review']['status'].replace('_', ' ')} by {p['review']['by']}: {p['review']['note']}"
                                   if p["review"] else "")} for p in data["pos"]],
            ("system_total", "terminal_total", "difference"))
-    _sheet(wb, "Expenses", [("date", "Business day", 13), ("driver_code", "Driver ID", 10), ("driver_name", "Driver", 22),
+    _sheet(wb, "Expenses", [("date", "Business day", 13), ("driver_code", "Driver ID", 15), ("driver_name", "Driver", 22),
                             ("type", "Type", 13), ("amount", "Amount", 13), ("reference", "Receipt", 13),
                             ("recovered", "Advance recovered", 22), ("note", "Note", 30)], data["expenses"], ("amount",))
     _sheet(wb, "Deposits", [("date", "Business day", 13), ("deposit_date", "Deposited on", 13), ("bank", "Bank", 24),
@@ -263,19 +267,30 @@ def build_pdf(data: dict, title: str, user: str, daily: bool) -> bytes:
 
     if daily:
         story.append(Paragraph("Cash handover by driver", h2))
-        rows = [[h["driver_code"], h["driver_name"], str(h["orders"]), m(h["expected_cash"]), m(h["cash_received"]),
-                 m(h["difference"]) if h["difference"] else "-", m(h["pos_amount"])] for h in data["handovers"]]
-        story.append(table(["Driver", "Name", "Orders", "Expected", "Counted", "Difference", "POS terminal"], rows,
-                           [16, 46, 14, 26, 26, 22, 26], (2, 3, 4, 5, 6),
-                           ["Total", "", str(sum(h["orders"] for h in data["handovers"])), m(t["expected_cash"]),
-                            m(t["cash_received"]), m(t["cash_difference"]), m(t["pos_terminal"])], red_cols=(5,)))
+        code_w = max(16, max((len(h["driver_code"]) for h in data["handovers"]), default=0) * 1.75 + 5)  # long system IDs fit
+        name = lambda h: Paragraph(escape(h["driver_name"]), body)  # noqa: E731  long names wrap instead of running over
+        orders = str(sum(h["orders"] for h in data["handovers"]))
+        if data["cash_mode"] == "paid":  # orders are closed only when paid: nothing was counted, so no difference
+            rows = [[h["driver_code"], name(h), str(h["orders"]), m(h["cash_received"]), m(h["pos_amount"]),
+                     m(round(h["cash_received"] + h["pos_amount"], 2))] for h in data["handovers"]]
+            story.append(table(["Driver", "Name", "Orders", "Cash", "POS terminal", "Total"], rows,
+                               [code_w, 176 - code_w - 14 - 3 * 28, 14, 28, 28, 28], (2, 3, 4, 5),
+                               ["Total", "", orders, m(t["cash_received"]), m(t["pos_terminal"]),
+                                m(round(t["cash_received"] + t["pos_terminal"], 2))]))
+        else:
+            rows = [[h["driver_code"], name(h), str(h["orders"]), m(h["expected_cash"]), m(h["cash_received"]),
+                     m(h["difference"]) if h["difference"] else "-", m(h["pos_amount"])] for h in data["handovers"]]
+            story.append(table(["Driver", "Name", "Orders", "Expected", "Counted", "Difference", "POS terminal"], rows,
+                               [code_w, 176 - code_w - 14 - 26 * 3 - 22, 14, 26, 26, 22, 26], (2, 3, 4, 5, 6),
+                               ["Total", "", orders, m(t["expected_cash"]), m(t["cash_received"]), m(t["cash_difference"]),
+                                m(t["pos_terminal"])], red_cols=(5,)))
         diffs = [p for p in data["pos"] if p["status"] in ("terminal_short", "terminal_over", "no_terminal")]
         story.append(Paragraph("POS check: differences", h2))
         if diffs:
             story.append(table(["Driver", "Terminal", "System", "Terminal total", "Difference", "Review"],
                                [[p["driver_code"], p["terminal"] or "-", m(p["system_total"]), m(p["terminal_total"]), m(p["difference"]),
-                                 Paragraph((f"{p['review']['status'].replace('_', ' ')}: {p['review']['note']}" if p["review"] else "Not reviewed"), body)]
-                                for p in diffs], [16, 22, 24, 26, 22, 66], (2, 3, 4), red_cols=(4,)))
+                                 Paragraph(escape(f"{p['review']['status'].replace('_', ' ')}: {p['review']['note']}" if p["review"] else "Not reviewed"), body)]
+                                for p in diffs], [code_w, 22, 24, 26, 22, 82 - code_w], (2, 3, 4), red_cols=(4,)))
         else:
             story.append(Paragraph("Every terminal total agrees with the system's POS orders.", body))
     else:
@@ -290,9 +305,9 @@ def build_pdf(data: dict, title: str, user: str, daily: bool) -> bytes:
                             m(t["to_deposit"]), m(t["deposited"]), m(t["pending"]), ""], red_cols=(2, 3)))
 
     story.append(Paragraph("Expenses and advances", h2))
-    story.append(table(["Day", "Driver", "Type", "Receipt", "Amount", "Advance recovered"],
-                       [[e["date"], f"{e['driver_code']} {e['driver_name']}", e["type"], e["reference"] or "-", m(e["amount"]), e["recovered"] or "-"]
-                        for e in data["expenses"]], [20, 50, 22, 22, 22, 40], (4,),
+    story.append(table(["Day", "Driver", "Type", "Receipt", "Amount", "Recovered"],
+                       [[e["date"], Paragraph(escape(f"{e['driver_code']} {e['driver_name']}"), body), e["type"], e["reference"] or "-", m(e["amount"]), e["recovered"] or "-"]
+                        for e in data["expenses"]], [20, 70, 22, 18, 20, 26], (4,),
                        ["Total", "", "", "", m(round(sum(e["amount"] for e in data["expenses"]), 2)), ""] if data["expenses"] else None))
     story.append(Paragraph("Bank deposit slips", h2))
     story.append(table(["Business day", "Deposited on", "Bank", "Slip", "Amount"],
@@ -314,7 +329,7 @@ def build_pdf(data: dict, title: str, user: str, daily: bool) -> bytes:
         canvas.saveState()
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(soft)
-        canvas.drawString(18 * mm, 10 * mm, f"CODesk  |  {title}  |  {period}  |  fictional demo data")
+        canvas.drawString(18 * mm, 10 * mm, f"CODesk  |  {title}  |  {period}" + ("  |  fictional demo data" if settings.seed_demo_data else ""))
         canvas.drawRightString(A4[0] - 18 * mm, 10 * mm, f"Page {doc.page}")
         canvas.restoreState()
 

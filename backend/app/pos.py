@@ -58,6 +58,8 @@ def day_rows(db: Session, day: date) -> list[dict]:
         d, h = drivers[did], handovers.get(did)
         system, count = orders[did]
         ms = paired.get(did, [])
+        if machines and not ms and not count:
+            continue  # a cash-only driver on a day with a terminal sheet: nothing to check
         if machines:
             terminal = sum(m.amount for m in ms) if ms else None
             label = ", ".join(m.terminal for m in ms) or None
