@@ -158,3 +158,12 @@ def test_an_old_slip_goes_to_the_one_station_without_a_slip_that_day(client):
         db.commit()
         stations.assign_missing(db)
         assert db.get(Deposit, dep.id).station_id == dmm  # the other station already has its own slip
+
+
+def test_month_so_far_for_a_station(client):
+    jed = sid(client, "JED")
+    latest = client.get("/api/meta").json()["latest_business_date"]
+    m = client.get("/api/dashboard/month", params={"date": latest}, headers={"X-Station": str(jed)}).json()
+    assert m["start"] == latest[:8] + "01" and m["working_days"] >= 1 and m["cash_received"] > 0
+    assert m["to_deposit"] == round(m["cash_received"] - m["paid_out"], 2)
+    assert m["not_deposited"] >= 0 and m["cash_short"] >= 0

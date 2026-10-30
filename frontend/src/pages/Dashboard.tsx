@@ -8,6 +8,7 @@ import { Badge, ErrorBox, Loading, Money, PageHeader, Panel } from "../component
 import { fmtDay, fmtMoney, useApi } from "../lib";
 import type { Dashboard as Dash } from "../types";
 import StationBoard from "../components/StationBoard";
+import MonthBox from "../components/MonthBox";
 import { useStation } from "../stations";
 
 /* Chart colors, checked for color-blind separation and contrast on white. */
@@ -112,6 +113,8 @@ export default function Dashboard() {
           </dl>
 
           <MoneyRoute f={f} activeDrivers={data.active_drivers} />
+
+          <MonthBox day={day} name={station ? station.name : "All stations"} />
 
           {!station && <StationBoard day={day} />}
 

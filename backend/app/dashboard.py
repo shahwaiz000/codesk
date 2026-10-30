@@ -47,6 +47,37 @@ def day_figures(db: Session, day: date, deposit_rows: dict) -> dict:
     }
 
 
+@router.get("/month")
+def month(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
+    """The month so far, from the 1st up to the chosen day: for the station being looked at (or all)."""
+    day = parse_day(date_)
+    first = day.replace(day=1)
+    days = sorted({d for (d,) in db.query(Collection.business_date).filter(Collection.business_date.between(first, day)).distinct()})
+    rows = [r for r in ledger(db, date.today()) if first.isoformat() <= r["date"] <= day.isoformat()]
+    handovers = db.query(Collection).filter(Collection.business_date.between(first, day)).all()
+    short = [h for h in handovers if h.cash_received < h.expected_cash]
+    pos_short = pos_count = pos_open = 0
+    machines = system = 0.0
+    for d in days:
+        _, p = pos.day_summary(db, d)
+        machines += p["machines_total"]
+        system += p["system_total"]
+        pos_count += p["differences"]
+        pos_open += p["open"]
+    late = [r for r in rows if r["status"] in ("overdue", "short")]
+    add = lambda k: round(sum(r[k] for r in rows), 2)  # noqa: E731
+    return {
+        "start": first.isoformat(), "end": day.isoformat(), "working_days": len(days),
+        "cash_received": add("cash_received"), "pos": round(machines, 2), "pos_difference": round(machines - system, 2),
+        "pos_differences": pos_count, "pos_open": pos_open,
+        "paid_out": round(add("paid_out") - add("returned"), 2), "to_deposit": add("to_deposit"), "deposited": add("deposited"),
+        "not_deposited": round(sum(r["pending"] for r in rows if r["pending"] > 0), 2),
+        "late_days": len(late), "late_amount": round(sum(r["pending"] for r in late), 2),
+        "late_dates": [r["date"] for r in sorted(late, key=lambda r: r["date"])],
+        "cash_short": to_sar(sum(h.expected_cash - h.cash_received for h in short)), "cash_short_count": len(short),
+    }
+
+
 @router.get("")
 def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     day = parse_day(date_)
