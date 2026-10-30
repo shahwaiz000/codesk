@@ -74,6 +74,14 @@ def month(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
         "not_deposited": round(sum(r["pending"] for r in rows if r["pending"] > 0), 2),
         "late_days": len(late), "late_amount": round(sum(r["pending"] for r in late), 2),
         "late_dates": [r["date"] for r in sorted(late, key=lambda r: r["date"])],
+        # the cashier's mistakes: put less in the bank than the cash received, or did not deposit on time
+        "deposit_short_days": len([r for r in rows if r["status"] == "short"]),
+        "deposit_short": round(sum(r["pending"] for r in rows if r["status"] == "short"), 2),
+        "deposit_short_dates": sorted(r["date"] for r in rows if r["status"] == "short"),
+        "deposit_overdue_days": len([r for r in rows if r["status"] == "overdue"]),
+        "deposit_overdue": round(sum(r["pending"] for r in rows if r["status"] == "overdue"), 2),
+        "deposit_overdue_dates": sorted(r["date"] for r in rows if r["status"] == "overdue"),
+        "short_paid_later": len([r for r in rows if r.get("paid_later_on")]),
         "cash_short": to_sar(sum(h.expected_cash - h.cash_received for h in short)), "cash_short_count": len(short),
     }
 
