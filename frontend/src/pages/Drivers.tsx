@@ -79,7 +79,7 @@ const DRIVER_PREVIEW = [
 
 export default function Drivers() {
   const { data, error, loading, reload } = useApi<Driver[]>("/drivers");
-  const { station } = useStation();
+  const { station, refresh: refreshStations } = useStation();
   const [query, setQuery] = useState("");
   const [hub, setHub] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -219,7 +219,7 @@ export default function Drivers() {
         <ImportDialog day="" noDate title="Import drivers" endpoint="/drivers/import" templateUrl="/api/drivers/template"
           noun={["driver", "drivers"]} columns={DRIVER_PREVIEW}
           intro="Upload your driver list as CSV or Excel. Each row needs the driver ID and name; station, hub, mobile and POS terminal ID are optional. A system report with a Site column puts each driver in his station, and a station not seen before is added. Drivers already saved are updated, never doubled, and an empty cell never wipes a saved value."
-          onClose={() => setImporting(false)} onSaved={() => { setImporting(false); reload(); }} />
+          onClose={() => setImporting(false)} onSaved={() => { setImporting(false); reload(); refreshStations(); }} />
       )}
       {editing && (
         <DriverForm driver={editing === "new" ? null : editing} hubs={hubs}
