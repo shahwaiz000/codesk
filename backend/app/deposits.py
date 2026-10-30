@@ -4,7 +4,8 @@
                       - expenses and advances paid out that day
                       + advances returned in cash that day
 
-A day can be deposited with more than one slip. Cash goes in as notes, so a day deposited to within
+A day can be deposited with more than one slip, and each station runs a balance: what a day leaves
+unbanked is carried to the next day, and a slip larger than its day's cash pays the oldest day still short. Cash goes in as notes, so a day deposited to within
 a few riyals (the halalas left, or a slip rounded up to the next note) counts as deposited. A day is overdue when money is still pending after
 its deposit day, and short when slips were recorded but they add up to less than the cash to deposit."""
 from collections import defaultdict
@@ -58,7 +59,11 @@ def status_for(day: date, to_deposit: int, deposited: int, today: date) -> str:
 
 def ledger(db: Session, today: date | None = None) -> list[dict]:
     """Every business day that has money in or out, newest first: one row per station and day, because
-    each station deposits its own cash."""
+    each station deposits its own cash.
+
+    Each station runs a balance, like a bank statement: what was left from earlier days is brought forward,
+    the day's cash is added, the slips are taken off, and what is left goes on to the next day. A slip pays
+    its own day first; anything more pays the oldest day still short."""
     today = today or date.today()
     cash = {(st, d): v for st, d, v in db.query(Collection.station_id, Collection.business_date, func.sum(Collection.cash_received))
             .group_by(Collection.station_id, Collection.business_date)}
@@ -70,27 +75,73 @@ def ledger(db: Session, today: date | None = None) -> list[dict]:
     for d in db.query(Deposit).order_by(Deposit.deposit_date, Deposit.id):
         slips[(d.station_id, d.business_date)].append(d)
     stations = {s.id: s for s in db.query(Station)}
-    keys = sorted(set(cash) | set(paid) | set(returned) | set(slips),
-                  key=lambda k: (k[1], stations[k[0]].name if k[0] in stations else ""), reverse=True)
+    keys = set(cash) | set(paid) | set(returned) | set(slips)
+
+    # walk each station's days, oldest first, keeping what each day still owes
+    owed: dict[tuple, int] = {}       # (station, day) -> still to deposit
+    rounding: dict[tuple, int] = {}
+    paid_later: dict[tuple, tuple] = {}  # (station, day) -> (deposit date, business day of the slip) that finished it
+    opening: dict[tuple, int] = {}
+    closing: dict[tuple, int] = {}
+    for st in {k[0] for k in keys}:
+        credit = 0  # paid too much, beyond rounding: taken off the next day's cash
+        mine = sorted(k for k in keys if k[0] == st)
+        for key in mine:
+            own = int(cash.get(key) or 0) - int(paid.get(key) or 0) + int(returned.get(key) or 0)
+            opening[key] = sum(v for k, v in owed.items() if k[0] == st) - credit
+            take = min(credit, max(own, 0))
+            credit -= take
+            owed[key] = own - take
+            amount = sum(x.amount for x in slips[key])
+            last = max((x.deposit_date for x in slips[key]), default=None)
+            if amount:
+                if rounded(owed[key], amount):
+                    rounding[key], owed[key] = amount - owed[key], 0
+                    amount = 0
+                else:
+                    use = min(amount, max(owed[key], 0))
+                    owed[key] -= use
+                    amount -= use
+                for old in sorted(k for k in owed if k[0] == st and k < key and owed[k] > 0):
+                    if not amount:
+                        break
+                    if rounded(owed[old], amount) or amount >= owed[old]:
+                        if amount < owed[old]:
+                            rounding[old] = amount - owed[old]
+                        use = min(amount, owed[old])
+                        owed[old], amount = 0, amount - use
+                        paid_later[old] = (last, key[1])
+                    else:
+                        owed[old] -= amount
+                        amount = 0
+                credit += amount
+            closing[key] = sum(v for k, v in owed.items() if k[0] == st) - credit
+
     out = []
-    for key in keys:
+    for key in sorted(keys, key=lambda k: (k[1], stations[k[0]].name if k[0] in stations else ""), reverse=True):
         st, day = key
         c, p, r = int(cash.get(key) or 0), int(paid.get(key) or 0), int(returned.get(key) or 0)
         to_dep = c - p + r
         dep = sum(x.amount for x in slips[key])
-        status = status_for(day, to_dep, dep, today)
+        pending = owed[key]
+        applied = to_dep - pending if not rounding.get(key) else dep
+        status = status_for(day, to_dep, applied, today) if pending or not dep or not rounding.get(key) else "deposited"
+        if pending > 0 and dep == 0 and key in paid_later:
+            status = "short"
         due = next_working_day(day)
-        last = max((x.deposit_date for x in slips[key]), default=None)
+        later = paid_later.get(key)
+        last = max([x.deposit_date for x in slips[key]] + ([later[0]] if later and not pending else []), default=None)
         out.append({
             "date": day.isoformat(), "due_on": due.isoformat(),
             "station_id": st, "station": stations[st].name if st in stations else "No station",
             "station_code": stations[st].code if st in stations else "",
             "cash_received": to_sar(c), "paid_out": to_sar(p), "returned": to_sar(r),
             "to_deposit": to_sar(to_dep), "deposited": to_sar(dep),
-            "pending": 0.0 if rounded(to_dep, dep) else to_sar(to_dep - dep),
-            "rounding": to_sar(dep - to_dep) if rounded(to_dep, dep) else 0.0,
+            "brought_forward": to_sar(opening[key]), "total_due": to_sar(opening[key] + to_dep), "left": to_sar(closing[key]),
+            "pending": to_sar(pending), "rounding": to_sar(rounding.get(key, 0)),
+            "paid_later_on": later[0].isoformat() if later and not pending else None,
             "status": status, "status_text": STATUS_TEXT[status],
-            "late": bool(last and last > due and dep > 0),
+            "late": bool(last and last > due and (dep > 0 or later)),
             "days_late": (last - due).days if last and last > due else 0,
             "slips": [{"id": x.id, "deposit_date": x.deposit_date.isoformat(), "bank": x.bank, "slip_ref": x.slip_ref,
                        "amount": to_sar(x.amount), "note": x.note, "created_by": x.created_by} for x in slips[key]],
@@ -115,7 +166,8 @@ def by_day(rows: list[dict]) -> list[dict]:
         status = min((r["status"] for r in rs), key=WORST.index)
         add = lambda k: round(sum(r[k] for r in rs), 2)  # noqa: E731
         out.append({"date": day, "due_on": rs[0]["due_on"], "station_id": None, "station": f"{len(rs)} stations", "station_code": "",
-                    **{k: add(k) for k in ("cash_received", "paid_out", "returned", "to_deposit", "deposited", "pending", "rounding")},
+                    **{k: add(k) for k in ("cash_received", "paid_out", "returned", "to_deposit", "deposited", "pending", "rounding",
+                                            "brought_forward", "total_due", "left")}, "paid_later_on": None,
                     "status": status, "status_text": STATUS_TEXT[status], "late": any(r["late"] for r in rs),
                     "days_late": max(r["days_late"] for r in rs), "slips": [x for r in rs for x in r["slips"]]})
     return out
@@ -171,9 +223,9 @@ def add_deposit(body: DepositIn, db: Session = Depends(get_db), user: str = Depe
     if len(rows) > 1:
         raise HTTPException(422, "Several stations have cash on this day: choose the station first")
     row = rows[0]
-    still = to_halalas(row["to_deposit"]) - to_halalas(row["deposited"])
+    still = to_halalas(row["left"])  # this day's cash and anything left from earlier days
     if amount >= still + ROUND_UP:
-        raise HTTPException(422, f"The slip is more than the {to_sar(max(still, 0)):,.2f} SAR still to deposit for this day")
+        raise HTTPException(422, f"The slip is more than the {to_sar(max(still, 0)):,.2f} SAR still to deposit up to this day")
     d = Deposit(business_date=day, deposit_date=when, bank=" ".join(body.bank.split()), slip_ref=slip, amount=amount,
                 note=" ".join(body.note.split()), created_by=user, station_id=row["station_id"])
     db.add(d)

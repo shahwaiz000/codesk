@@ -259,12 +259,15 @@ def check(fields: dict, db: Session) -> dict:
         amount = to_halalas(total)
         candidates = [r for r in deposits.ledger(db) if r["pending"] > 0
                       and (deposit_day is None or date.fromisoformat(r["date"]) <= deposit_day)
-                      and deposits.rounded(to_halalas(r["pending"]), amount)]
+                      and (deposits.rounded(to_halalas(r["pending"]), amount) or deposits.rounded(to_halalas(r["left"]), amount))]
         if len(candidates) == 1:
             day = candidates[0]["date"]
-            gap = round(total - candidates[0]["pending"], 2)
+            whole = deposits.rounded(to_halalas(candidates[0]["left"]), amount) and candidates[0]["left"] != candidates[0]["pending"]
+            gap = round(total - (candidates[0]["left"] if whole else candidates[0]["pending"]), 2)
             checks.append({"ok": True, "text": scope.named(candidates[0], f"Matches the cash of {date.fromisoformat(day):%a %d %b} ({candidates[0]['pending']:,.2f})")
                            + (f", rounded {gap:+,.2f}" if gap else "")})
+            if whole:
+                checks.append({"ok": True, "text": f"Also pays the {candidates[0]['left'] - candidates[0]['pending']:,.2f} left from earlier days"})
         elif len(candidates) > 1:
             checks.append({"ok": False, "text": "More than one day has this amount: choose the day"})
         else:

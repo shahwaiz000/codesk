@@ -71,8 +71,10 @@ def test_record_a_deposit_with_two_slips(client):
     r = client.post("/api/deposits", json=slip)
     assert r.status_code == 201 and r.json()["status"] == "short" and r.json()["pending"] == 419.5
     assert client.post("/api/deposits", json=slip).status_code == 409  # same slip twice
-    too_much = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-2", "amount": 425})  # 5.50 more
-    assert too_much.status_code == 422 and "419.50" in too_much.json()["error"]["message"]
+    left = r.json()["left"]  # this day's 419.50 plus anything earlier days left unbanked
+    assert left >= 419.5
+    too_much = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-2", "amount": left + 5.5})  # 5.50 more
+    assert too_much.status_code == 422 and f"{left:,.2f}" in too_much.json()["error"]["message"]
     early = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-3", "deposit_date": "2026-06-01"})
     assert early.status_code == 422
     r = client.post("/api/deposits", json={**slip, "slip_ref": "DS-TEST-2", "amount": "419.50"}).json()
@@ -178,3 +180,27 @@ def test_a_deposit_rounded_to_whole_notes_counts_as_deposited():
     assert status_for(day, 792304, 792300, later) == "deposited"   # the 0.04 halalas stay behind
     assert status_for(day, 792304, 793000, later) == "over"        # 5.96 more is not rounding
     assert status_for(day, 792304, 790000, later) == "short"
+
+
+def test_a_short_day_is_carried_forward_and_paid_later(client):
+    """A station runs a balance: a short day stays short, its gap is carried to the next days, and a
+    larger slip later pays it."""
+    ruh = next(s["id"] for s in client.get("/api/stations").json()["stations"] if s["code"] == "KRJ")
+    h = {"X-Station": str(ruh)}
+    d = client.post("/api/drivers", json={"code": "K-1", "name": "Carry Forward"}, headers=h).json()["id"]
+    days = ["2026-03-02", "2026-03-03", "2026-03-04"]
+    for day in days:
+        client.put("/api/collections", json={"business_date": day, "driver_id": d, "expected_cash": 1000, "cash_received": 1000}, headers=h)
+    slip = lambda day, ref, amount, when: client.post("/api/deposits", headers=h, json={  # noqa: E731
+        "business_date": day, "deposit_date": when, "bank": "Coastal National Bank", "slip_ref": ref, "amount": amount})
+    assert slip(days[0], "CF-1", 600, days[1]).status_code == 201          # 400 short
+    assert slip(days[1], "CF-2", 1000, days[2]).status_code == 201         # its own cash only
+    rows = {r["date"]: r for r in client.get("/api/deposits", params={"end": days[2], "count": 3}, headers=h).json()["rows"]}
+    assert rows[days[0]]["status"] == "short" and rows[days[0]]["pending"] == 400 and rows[days[0]]["left"] == 400
+    assert rows[days[1]]["brought_forward"] == 400 and rows[days[1]]["total_due"] == 1400 and rows[days[1]]["left"] == 400
+    assert rows[days[1]]["status"] == "deposited"
+    assert slip(days[2], "CF-3", 1400, "2026-03-05").status_code == 201    # its own 1,000 and the old 400
+    rows = {r["date"]: r for r in client.get("/api/deposits", params={"end": days[2], "count": 3}, headers=h).json()["rows"]}
+    assert rows[days[0]]["status"] == "deposited" and rows[days[0]]["paid_later_on"] == "2026-03-05" and rows[days[0]]["late"]
+    assert rows[days[2]]["left"] == 0 and rows[days[2]]["status"] == "deposited"
+    assert slip(days[2], "CF-4", 10, "2026-03-05").status_code == 422      # nothing left to deposit

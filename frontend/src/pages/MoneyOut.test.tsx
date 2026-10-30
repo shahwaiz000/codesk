@@ -13,9 +13,9 @@ const LEDGER: DepositLedger = {
   totals: { cash_on_hand: 33000, overdue: 0, overdue_days: 0, short: 500, short_days: 1, due_today: 32500, not_due: 0, deposited: 900000, late_days: 1 },
   rows: [
     { date: "2026-10-26", due_on: "2026-10-27", cash_received: 33000, paid_out: 500, returned: 0, to_deposit: 32500, deposited: 0,
-      pending: 32500, status: "due_today", status_text: "Due today", late: false, days_late: 0, slips: [] },
+      pending: 32500, brought_forward: 500, total_due: 33000, left: 33000, status: "due_today", status_text: "Due today", late: false, days_late: 0, slips: [] },
     { date: "2026-10-11", due_on: "2026-10-12", cash_received: 30000, paid_out: 400, returned: 0, to_deposit: 29600, deposited: 29100,
-      pending: 500, status: "short", status_text: "Deposit short", late: false, days_late: 0,
+      pending: 500, brought_forward: 0, total_due: 29600, left: 500, status: "short", status_text: "Deposit short", late: false, days_late: 0,
       slips: [{ id: 7, deposit_date: "2026-10-12", bank: "Gulf Trade Bank", slip_ref: "DS-123456", amount: 29100, note: "", created_by: "demo" }] },
   ],
 };
@@ -41,7 +41,8 @@ test("deposits show what is due and short, and a slip can be recorded", async ()
   const amount = within(dialog).getByLabelText("Slip amount (SAR)");
   await userEvent.clear(amount);
   await userEvent.type(amount, "32000");
-  expect(within(dialog).getByText("500.00")).toBeInTheDocument(); // still pending after this slip
+  expect(within(dialog).getByText("500.00")).toBeInTheDocument(); // carried from an earlier short day
+  expect(within(dialog).getByText("1,000.00")).toBeInTheDocument(); // left after this slip: 33,000 - 32,000
   await userEvent.click(within(dialog).getByRole("button", { name: "Save deposit" }));
   await waitFor(() => {
     const post = f.mock.calls.find(([, i]) => i?.method === "POST");

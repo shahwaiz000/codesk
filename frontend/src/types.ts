@@ -66,6 +66,7 @@ export interface Slip { id: number; deposit_date: string; bank: string; slip_ref
 export interface DepositDay {
   date: string; due_on: string; cash_received: number; paid_out: number; returned: number; to_deposit: number;
   deposited: number; pending: number; rounding?: number; status: DepositStatus;
+  brought_forward: number; total_due: number; left: number; paid_later_on?: string | null;
   station_id?: number | null; station?: string; station_code?: string; status_text: string; late: boolean; days_late: number; slips: Slip[];
 }
 export interface DepositLedger {

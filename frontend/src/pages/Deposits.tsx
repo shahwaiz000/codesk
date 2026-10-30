@@ -15,12 +15,12 @@ function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; bank
   const [date, setDate] = useState(todayIso() < row.due_on ? row.date : todayIso());
   const [bank, setBank] = useState(banks[0] ?? "");
   const [slip, setSlip] = useState("");
-  const [amount, setAmount] = useState(String(row.pending));
+  const [amount, setAmount] = useState(String(row.left > 0 ? row.left : row.pending));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const value = parseAmount(amount);
-  const after = value != null ? Math.round((row.pending - value) * 100) / 100 : null;
+  const after = value != null ? Math.round((row.left - value) * 100) / 100 : null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -34,10 +34,11 @@ function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; bank
     <Modal title={`Deposit the cash of ${fmtDay(row.date)}${row.station ? `, ${row.station}` : ""}`} onClose={onClose} width="max-w-lg">
       <form onSubmit={submit} className="space-y-4">
         <dl className="-mt-2 grid grid-cols-3 gap-3 rounded-lg bg-paper p-3 text-sm">
-          <div><dt className="text-xs text-ink-faint">To deposit</dt><dd><Money value={row.to_deposit} className="font-semibold" /></dd></div>
-          <div><dt className="text-xs text-ink-faint">Already deposited</dt><dd><Money value={row.deposited} className="font-semibold" /></dd></div>
-          <div><dt className="text-xs text-ink-faint">Still pending</dt><dd><Money value={row.pending} tone="brass" className="font-semibold" /></dd></div>
+          <div><dt className="text-xs text-ink-faint">This day's cash</dt><dd><Money value={row.to_deposit} className="font-semibold" /></dd></div>
+          <div><dt className="text-xs text-ink-faint">From earlier days</dt><dd><Money value={row.left - row.pending} className="font-semibold" /></dd></div>
+          <div><dt className="text-xs text-ink-faint">Left to deposit</dt><dd><Money value={row.left} tone="brass" className="font-semibold" /></dd></div>
         </dl>
+        {row.left > row.pending && <p className="-mt-1 text-xs text-ink-faint">The slip pays this day first; anything more pays the oldest day still short.</p>}
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm font-medium">Bank
             <input className="field" list="bank-list" value={bank} onChange={(e) => setBank(e.target.value)} />
@@ -51,7 +52,7 @@ function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; bank
           <label className="block text-sm font-medium">Slip amount (SAR)
             <input className="field num text-right" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
         </div>
-        {after != null && after > 0 && <p className="rounded-md bg-brass-soft px-3 py-2 text-sm text-brass-dark">After this slip, <span className="num font-semibold">{fmtMoney(after)}</span> SAR will still be pending for this day.</p>}
+        {after != null && after > 0 && <p className="rounded-md bg-brass-soft px-3 py-2 text-sm text-brass-dark">After this slip, <span className="num font-semibold">{fmtMoney(after)}</span> SAR will still be left to deposit.</p>}
         {date > row.due_on && <p className="text-xs text-ink-faint">This deposit is after the due day ({fmtDay(row.due_on)}), so the day will be marked late.</p>}
         <label className="block text-sm font-medium">Note
           <input className="field" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></label>
@@ -95,7 +96,13 @@ function Slips({ row, onDelete }: { row: DepositDay; onDelete: (s: Slip) => void
         {row.returned > 0 && <div className="flex justify-between"><dt className="text-ink-soft">Advances returned in cash</dt><dd><Money value={row.returned} /></dd></div>}
         <div className="flex justify-between border-t border-paper-line pt-1.5 font-semibold"><dt>Cash to deposit</dt><dd><Money value={row.to_deposit} /></dd></div>
         <div className="flex justify-between"><dt className="text-ink-soft">Deposited</dt><dd><Money value={-row.deposited} /></dd></div>
-        <div className="flex justify-between border-t border-paper-line pt-1.5 font-semibold"><dt>Pending</dt><dd><Money value={row.pending} tone={row.pending > 0 ? "short" : "leaf"} /></dd></div>
+        <div className="flex justify-between border-t border-paper-line pt-1.5 font-semibold"><dt>This day still owes</dt><dd><Money value={row.pending} tone={row.pending > 0 ? "short" : "leaf"} /></dd></div>
+        {row.paid_later_on && <div className="text-xs text-leaf-dark">Short amount paid with a later slip on {fmtDay(row.paid_later_on)}</div>}
+        <div className="mt-2 space-y-1.5 rounded-lg bg-paper p-2.5">
+          <div className="flex justify-between"><dt className="text-ink-soft">Left from earlier days</dt><dd><Money value={row.brought_forward} /></dd></div>
+          <div className="flex justify-between"><dt className="text-ink-soft">Total to deposit</dt><dd><Money value={row.total_due} /></dd></div>
+          <div className="flex justify-between font-semibold"><dt>Left after this day</dt><dd><Money value={row.left} tone={row.left > 0 ? "brass" : "leaf"} /></dd></div>
+        </div>
         {!!row.rounding && <div className="flex justify-between text-xs text-ink-faint"><dt>Rounded to whole notes</dt><dd><Money value={row.rounding} tone="muted" /></dd></div>}
       </dl>
     </div>
@@ -123,7 +130,7 @@ export default function Deposits() {
 
   return (
     <>
-      <PageHeader title="Bank deposits" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. Cash to deposit is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash.`} />
+      <PageHeader title="Bank deposits" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. A day's cash is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash. Anything not deposited is carried to the next day, like a bank statement.`} />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
           <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>div]:border-paper-line max-lg:[&>div:nth-child(-n+2)]:border-b max-lg:[&>div:nth-child(odd)]:border-r lg:[&>div:not(:last-child)]:border-r">
@@ -156,14 +163,16 @@ export default function Deposits() {
               <input type="checkbox" className="h-4 w-4 accent-ledger-700" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />Only days with money pending</label>}>
             {actionError && <div className="px-5 pt-3"><FormError message={actionError} /></div>}
             <div className="relative overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[1120px] text-sm">
                 <thead><tr className="border-b border-paper-line text-left text-xs text-ink-faint">
                   <th className="px-5 py-2.5 font-medium">Business day</th>
                   <th className="px-3 py-2.5 text-right font-medium">Cash received</th>
                   <th className="px-3 py-2.5 text-right font-medium">Paid out</th>
-                  <th className="px-3 py-2.5 text-right font-medium">To deposit</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Day's cash</th>
+                  <th className="px-3 py-2.5 text-right font-medium">From before</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Total to deposit</th>
                   <th className="px-3 py-2.5 text-right font-medium">Deposited</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Pending</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Left</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-5 py-2.5"><span className="sr-only">Actions</span></th>
                 </tr></thead>
@@ -183,15 +192,18 @@ export default function Deposits() {
                           </td>
                           <td className="px-3 py-3 text-right"><Money value={r.cash_received} /></td>
                           <td className="px-3 py-3 text-right"><Money value={r.paid_out - r.returned} tone="muted" /></td>
-                          <td className="px-3 py-3 text-right font-medium"><Money value={r.to_deposit} /></td>
+                          <td className="px-3 py-3 text-right"><Money value={r.to_deposit} /></td>
+                          <td className="px-3 py-3 text-right">{r.brought_forward ? <Money value={r.brought_forward} tone="brass" /> : <span className="text-ink-faint">-</span>}</td>
+                          <td className="px-3 py-3 text-right font-medium"><Money value={r.total_due} /></td>
                           <td className="px-3 py-3 text-right"><Money value={r.deposited} /></td>
-                          <td className="px-3 py-3 text-right font-semibold">{r.pending ? <Money value={r.pending} tone={attention ? "short" : "brass"} />
+                          <td className="px-3 py-3 text-right font-semibold">{r.left > 0 ? <Money value={r.left} tone={attention ? "short" : "brass"} />
                             : r.rounding ? <span className="text-xs font-normal text-ink-faint" title="Cash goes to the bank in whole notes">rounded {r.rounding > 0 ? "+" : ""}{fmtMoney(r.rounding)}</span>
-                            : <span className="text-ink-faint">-</span>}</td>
+                            : <span className="text-ink-faint">0.00</span>}</td>
                           <td className="px-3 py-3">
                             <span className="flex flex-wrap items-center gap-1.5">
                               <Badge tone={TONE[r.status]}>{r.status_text}</Badge>
                               {r.late && <Badge tone="short">{r.days_late} {r.days_late === 1 ? "day" : "days"} late</Badge>}
+                              {r.paid_later_on && <span className="text-xs text-ink-faint">short paid {fmtDay(r.paid_later_on)}</span>}
                             </span>
                           </td>
                           <td className="px-5 py-3 text-right">
@@ -202,7 +214,7 @@ export default function Deposits() {
                         </tr>
                         {expanded && (
                           <tr className="border-b border-paper-line bg-paper/50">
-                            <td colSpan={8} className="px-5 py-5"><Slips row={r} onDelete={setDeleting} /></td>
+                            <td colSpan={10} className="px-5 py-5"><Slips row={r} onDelete={setDeleting} /></td>
                           </tr>
                         )}
                       </Fragment>
