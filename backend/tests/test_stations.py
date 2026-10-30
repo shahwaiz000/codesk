@@ -179,3 +179,16 @@ def test_the_overview_says_who_to_call(client):
     assert [s["level"] for s in ov["stations"]] == sorted((s["level"] for s in ov["stations"]), key=["call", "check", "ok"].index)
     quiet = by.get("TUU")  # a driver but no report on this day
     assert quiet and not quiet["files"]["report"] and quiet["level"] == "call"
+
+
+def test_a_collection_report_adds_new_drivers_in_their_station(client):
+    text = ("Waybill Number,Collect Method,Actual Received Amount,DA Code,DA Name,Site Code,Site,Collection Operation Time\n"
+            "NS-1,Cash,80.00,S-950,New From Report,QTF,Qatif,2026-05-21 20:00:00\n")
+    up = lambda: {"file": ("r.csv", text.encode(), "text/csv")}  # noqa: E731
+    r = client.post("/api/collections/import", files=up()).json()
+    assert r["rows"][0]["status"] == "new" and "at Qatif" in r["rows"][0]["problems"][0]
+    client.post("/api/collections/import", files=up(), data={"commit": "true"})
+    d = {x["code"]: x for x in client.get("/api/drivers").json()}["S-950"]
+    assert d["station_code"] == "QTF"
+    day = client.get("/api/collections", params={"date": "2026-05-21"}, headers={"X-Station": str(sid(client, "QTF"))}).json()
+    assert [h["driver_code"] for h in day["rows"]] == ["S-950"]

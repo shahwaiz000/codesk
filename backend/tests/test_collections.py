@@ -157,11 +157,13 @@ def test_the_systems_order_report_becomes_one_handover_per_driver(client):
     rows = {x["driver_code"]: x for x in r["rows"]}
     assert rows["D-101"]["expected_cash"] == 145.0 and rows["D-101"]["orders"] == 3 and rows["D-101"]["system_pos"] == 360.0
     assert rows["D-101"]["cash_received"] == 145.0 and rows["D-101"]["status"] == "new"
-    assert rows["D-102"]["expected_cash"] == 250.5 and rows["X-404"]["status"] == "error"
+    assert rows["D-102"]["expected_cash"] == 250.5
+    assert rows["X-404"]["status"] == "new" and "new driver, will be added" in rows["X-404"]["problems"][0]  # added when saved
     client.post("/api/collections/import", files={"file": ("report.csv", text.encode(), "text/csv")}, data={"commit": "true"})
     day = client.get("/api/collections", params={"date": d}).json()
     h = next(x for x in day["rows"] if x["driver_code"] == "D-101")
     assert (h["expected_cash"], h["cash_received"], h["orders"]) == (145.0, 145.0, 3)
+    assert any(x["driver_code"] == "X-404" for x in day["rows"])  # the new driver was added with his handover
 
     # the desk records a shortage; importing a later report keeps the counted cash
     client.put("/api/collections", json={"business_date": d, "driver_id": h["driver_id"], "orders": 3,

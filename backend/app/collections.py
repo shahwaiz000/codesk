@@ -289,6 +289,8 @@ def _check_report(db: Session, df, default_day: date | None) -> tuple[list[dict]
     if not tcol and not default_day:
         raise FileProblem("The file has no Date column, so choose the business date first")
     drivers = {d.code.upper(): d for d in db.query(Driver)}
+    from .driver_import import CODE_OK, COLUMNS as DRIVER_COLUMNS
+    scol, sncol = find_column(df, DRIVER_COLUMNS["site_code"]), find_column(df, DRIVER_COLUMNS["site"])
     groups: dict[tuple, dict] = {}
     bad = []
     for i, r in df.iterrows():
@@ -316,14 +318,18 @@ def _check_report(db: Session, df, default_day: date | None) -> tuple[list[dict]
                         "cash_received": 0, "pos_amount": 0, "difference": 0, "note": ""})
             continue
         g = groups.setdefault((day, code), {"line": line, "orders": set(), "cash": 0, "pos": 0,
-                                            "name": str(r[ncol]).strip() if ncol else ""})
+                                            "name": str(r[ncol]).strip() if ncol else "",
+                                            "site": (str(r[scol]).strip() if scol else "", str(r[sncol]).strip() if sncol else "")})
         g["orders"].add(clean_code(r[ocol]))
         g["pos" if is_pos(method) else "cash"] += amount
     out = []
     for (day, code), g in sorted(groups.items(), key=lambda kv: kv[1]["line"]):
-        drv, problems = drivers.get(code), []
+        drv, problems, new_driver = drivers.get(code), [], None
         if not drv:
-            problems.append(f"unknown driver {code}. Import the drivers from this file first")
+            if CODE_OK.match(code) and len(" ".join(g["name"].split())) >= 2:
+                new_driver = (code, " ".join(g["name"].split())[:80], g["site"])  # added with his station when saved
+            else:
+                problems.append(f"unknown driver {code}" + ("" if g["name"] else ", and the file has no driver name to add him"))
         elif not drv.active:
             problems.append(f"{code} is inactive")
         existing = db.query(Collection).filter_by(business_date=day, driver_id=drv.id).first() if drv else None
@@ -336,11 +342,14 @@ def _check_report(db: Session, df, default_day: date | None) -> tuple[list[dict]
         if existing and not problems:
             status = "same" if (existing.expected_cash, existing.cash_received, existing.orders) == (expected, received, orders) else "update"
         notes = [] if problems or paid else (["counted cash kept as recorded"] if existing else ["counted cash set to the system cash: change it if short"])
+        if new_driver:
+            site = new_driver[2][1] or new_driver[2][0]
+            notes = [f"new driver, will be added" + (f" at {site}" if site else "")] + notes
         out.append({"line": g["line"], "status": status, "problems": problems + notes, "driver_code": code,
                     "driver_name": drv.name if drv else g["name"], "date": day.isoformat(), "orders": orders,
                     "expected_cash": to_sar(expected), "cash_received": to_sar(received), "pos_amount": to_sar(pos),
                     "system_pos": to_sar(g["pos"]), "difference": to_sar(received - expected), "note": note,
-                    "_driver": drv, "_day": day, "_h": (orders, expected, received, pos)})
+                    "_driver": drv, "_new_driver": new_driver, "_day": day, "_h": (orders, expected, received, pos)})
     out += bad
     counts = {k: sum(o["status"] == k for o in out) for k in ("new", "update", "same", "error")}
     return out, counts
@@ -358,6 +367,21 @@ async def import_file(file: UploadFile = File(...), business_date: str = Form(""
         raise HTTPException(422, str(e))
 
 
+def _add_driver(db: Session, code: str, name: str, site: tuple, user: str) -> Driver:
+    """A driver the report shows for the first time: added with the station of his Site column (or the
+    station being looked at), so the report can be imported without importing the drivers first."""
+    from . import stations
+    known = db.query(Driver).filter(func.upper(Driver.code) == code).first()
+    if known:
+        return known
+    st = stations.find_or_add(db, *site, user=user) if any(site) else None
+    d = Driver(code=code, name=name, station_id=st.id if st else scope.station())
+    db.add(d)
+    db.flush()
+    audit.record(db, user, "created", "driver", d.id, f"Driver {code} {name} added from a collection report")
+    return d
+
+
 def run(db: Session, filename: str, data: bytes, default_day: date | None, commit: bool, user: str) -> dict:
     """Check (and with commit, save) handovers from a file. Also used by the watch folder."""
     df = read_upload(filename, data)
@@ -369,6 +393,8 @@ def run(db: Session, filename: str, data: bytes, default_day: date | None, commi
         for r in rows:
             if r["status"] in ("new", "update"):
                 orders, expected, received, pos = r["_h"]
+                if r["_driver"] is None and r.get("_new_driver"):
+                    r["_driver"] = _add_driver(db, *r["_new_driver"], user=user)
                 save_handover(db, user, r["_day"], r["_driver"], orders, expected, received, pos,
                               " ".join(r["note"].split()), source=f" (import {filename})")
                 saved += 1
