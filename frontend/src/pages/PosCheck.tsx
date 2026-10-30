@@ -2,6 +2,7 @@ import { FormEvent, Fragment, useState } from "react";
 import { useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
+import ReceiptReader from "../components/ReceiptReader";
 import ImportDialog, { money, PreviewRow } from "../components/ImportDialog";
 import { Badge, Empty, ErrorBox, FormError, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, fmtMoney, fmtWhen, send, useApi } from "../lib";
@@ -277,6 +278,8 @@ export default function PosCheck({ embedded = false }: { embedded?: boolean }) {
                   <dd className="mt-1 text-xs text-ink-faint">{!both ? "Import both files to compare" : Math.abs(diff) >= 0.01 ? `The sheet is ${diff < 0 ? "below" : "above"} the system by ${fmtMoney(Math.abs(diff))}` : "The sheet agrees with the system"}</dd>
                 </div>
               </dl>
+
+              <ReceiptReader day={day} onSaved={changed} />
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <Panel flush title="Card payments in the system, by driver">
