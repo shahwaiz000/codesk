@@ -73,7 +73,7 @@ I built it around the work I do every day as a finance executive at a delivery c
 - **The dashboard and reports use the same calculations as the pages**, so a number never disagrees between screens.
 - **Excel safety.** Text that Excel could run as a formula (starting with `=`, `+`, `-` or `@`) is made harmless in exported reports.
 - **Older databases upgrade themselves.** When a new version adds columns, they are added at start-up.
-- **Tests.** 119 backend tests (pytest) and 17 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
+- **Tests.** 119 backend tests (pytest) and 16 frontend tests (Vitest). The demo data has mistakes planted on purpose, and the tests check the app finds exactly those.
 
 ## Demo data
 

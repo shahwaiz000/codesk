@@ -38,8 +38,8 @@ export default function MonthBox({ day, name }: { day: string; name: string }) {
           {m.deposit_overdue_days ? <b className="text-short"><Money value={m.deposit_overdue} tone="short" /> SAR ({dates(m.deposit_overdue_dates)})</b> : <b className="text-leaf-dark">none</b>}
         </Link></li>
         <li><Link to="/pos" className="hover:underline">
-          <span className="text-ink-soft">Card machine differences: </span>
-          {m.pos_differences ? <><b className={m.pos_open ? "text-short" : ""}>{m.pos_differences}</b>{m.pos_open ? <span className="text-short">, {m.pos_open} not explained</span> : ", all explained"}</> : <b className="text-leaf-dark">none</b>}
+          <span className="text-ink-soft">Card sheet not matching the system: </span>
+          {m.pos_differences ? <b className="text-short">{m.pos_differences} {m.pos_differences === 1 ? "day" : "days"}, <Money value={m.pos_difference} tone="short" /> SAR</b> : <b className="text-leaf-dark">none</b>}
         </Link></li>
       </ul>
     </Panel>

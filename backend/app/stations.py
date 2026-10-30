@@ -214,8 +214,8 @@ def _check_day(db: Session, sid: int, day: date, f: dict, row: dict | None, late
         problems.append({"level": "check", "text": "The system's POS orders file is missing"})
     elif not machines:
         problems.append({"level": "check", "text": "The card machine sheet is missing"})
-    if f["pos_open"]:
-        problems.append({"level": "check", "text": f"Card machines differ by {f['pos_difference']:,.2f}, not explained"})
+    if orders and machines and abs(f["pos_difference"]) >= 0.01:  # the cashier's card machine sheet against the system's card payments
+        problems.append({"level": "check", "text": f"Card machine sheet differs from the system by {f['pos_difference']:,.2f}"})
     if late:
         amount = sum(r["pending"] for r in late)
         days = ", ".join(f"{date.fromisoformat(r['date']):%a %d %b}" for r in sorted(late, key=lambda r: r["date"])[:3])

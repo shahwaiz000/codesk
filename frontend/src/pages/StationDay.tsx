@@ -14,7 +14,7 @@ import PosCheck from "./PosCheck";
 
 export const TABS: { key: string; label: string; icon: IconName }[] = [
   { key: "collection", label: "Collection", icon: "cash" },
-  { key: "pos", label: "POS", icon: "card" },
+  { key: "pos", label: "Card (POS)", icon: "card" },
   { key: "expenses", label: "Expenses", icon: "receipt" },
   { key: "deposit", label: "Deposit", icon: "bank" },
 ];
@@ -86,7 +86,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
       {error ? <ErrorBox message={error} retry={reload} /> : (
         <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-3 lg:grid-cols-6 [&>div]:border-paper-line [&>div]:border-b lg:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
           <Box label="Cash collected" foot={f ? `${f.drivers} drivers` : ""}><Money value={f?.cash_received} /></Box>
-          <Box label="POS (card)" foot={f && f.pos_difference ? <span className="text-short">machines differ by {fmtMoney(f.pos_difference)}</span> : f?.pos_awaiting ? "waiting for the system file" : "machines agree"}>
+          <Box label="POS (card)" foot={f && f.pos_difference ? <span className="text-short">sheet differs by {fmtMoney(f.pos_difference)}</span> : f?.pos_awaiting ? "waiting for the system file" : "sheet agrees"}>
             <Money value={f?.pos_terminal || f?.pos_system} /></Box>
           <Box label="Expenses paid out"><Money value={f?.paid_out} tone="muted" /></Box>
           <Box label="To deposit" foot={f ? (f.brought_forward ? <>day's cash <span className="num">{fmtMoney(f.to_deposit)}</span> + <span className="num text-brass-dark">{fmtMoney(f.brought_forward)}</span> from earlier days</> : f.due_on ? `due ${fmtDay(f.due_on)}` : "") : ""}>

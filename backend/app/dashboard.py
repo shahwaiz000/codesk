@@ -65,8 +65,9 @@ def month(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
         _, p = pos.day_summary(db, d)
         machines += p["machines_total"]
         system += p["system_total"]
-        pos_count += p["differences"]
-        pos_open += p["open"]
+        if p["system_total"] and p["machines_total"] and abs(p["difference"]) >= 0.01:  # the sheet against the system, per day
+            pos_count += 1
+            pos_open += 1
     late = [r for r in rows if r["status"] in ("overdue", "short")]
     add = lambda k: round(sum(r[k] for r in rows), 2)  # noqa: E731
     return {

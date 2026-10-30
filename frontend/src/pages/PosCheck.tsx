@@ -236,9 +236,9 @@ export default function PosCheck({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <>
-      <PageHeader embedded={embedded} title="POS check" subtitle="For each driver, the orders the system shows as closed by POS against the total on his POS terminal. Both should agree to the halala.">
+      <PageHeader embedded={embedded} title="POS check" subtitle="The card payments in the system against the total of the cashier's card machine sheet. Both should agree.">
         <button onClick={() => setImporting("orders")} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import system orders</button>
-        <button onClick={() => setImporting("terminals")} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import terminal sheet</button>
+        <button onClick={() => setImporting("terminals")} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import card machine sheet</button>
       </PageHeader>
 
       {!embedded && <DayPicker refreshKey={version} />}
@@ -248,123 +248,80 @@ export default function PosCheck({ embedded = false }: { embedded?: boolean }) {
           {!data.orders_imported && data.rows.length > 0 && (
             <div className="mb-6 flex flex-wrap items-center gap-3 rounded-panel border border-brass/30 bg-brass-soft px-5 py-3 text-sm text-brass-dark">
               <Icon name="alert" className="h-5 w-5" />
-              <span className="flex-1">The system's POS orders for {fmtDay(day)} are not imported yet, so the terminal totals cannot be checked.</span>
+              <span className="flex-1">The system's POS orders for {fmtDay(day)} are not imported yet, so the card machine sheet cannot be compared yet.</span>
               <button onClick={() => setImporting("orders")} className="btn-primary">Import system orders</button>
             </div>
           )}
 
-          <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>div]:border-paper-line max-lg:[&>div:nth-child(-n+2)]:border-b max-lg:[&>div:nth-child(odd)]:border-r lg:[&>div:not(:last-child)]:border-r">
-            <div className="p-5">
-              <dt className="text-sm text-ink-soft">System POS orders</dt>
-              <dd className="mt-1 text-[22px] font-semibold"><Money value={t.system_total} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
-              <dd className="mt-1 text-xs text-ink-faint"><span className="num">{t.order_count}</span> orders</dd>
-            </div>
-            <div className="p-5">
-              <dt className="text-sm text-ink-soft">{t.sheet ? "POS machines" : "Terminal totals"}</dt>
-              <dd className="mt-1 text-[22px] font-semibold"><Money value={t.sheet ? t.machines_total : t.terminal_total} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
-              <dd className="mt-1 text-xs text-ink-faint">{t.sheet ? `${t.machines} machines${t.unpaired ? `, ${t.unpaired} not matched yet` : ", all matched"}` : t.awaiting ? `${t.awaiting} waiting for system orders` : t.no_terminal ? `${t.no_terminal} without a terminal total` : `${t.drivers} drivers`}</dd>
-            </div>
-            <div className="p-5">
-              <dt className="text-sm text-ink-soft">Difference</dt>
-              <dd className="mt-1 text-[22px] font-semibold">
-                {t.difference ? <Money value={t.difference} tone={t.difference < 0 ? "short" : "brass"} /> : <Money value={0} tone="leaf" />}
-              </dd>
-              <dd className="mt-1 text-xs text-ink-faint">
-                {t.sheet && t.order_count ? (t.difference ? `Machines ${t.difference < 0 ? "below" : "above"} the system orders` : "Machines agree with the system") : t.differences ? [t.short && `terminals short ${fmtMoney(t.short)}`, t.over && `over ${fmtMoney(t.over)}`].filter(Boolean).join(", ") : t.awaiting ? "Not checked yet" : t.drivers ? "Every terminal agrees" : "Nothing recorded"}
-              </dd>
-            </div>
-            <div className="p-5">
-              <dt className="text-sm text-ink-soft">To review</dt>
-              <dd className={`mt-1 text-[22px] font-semibold ${t.open ? "text-short" : "text-leaf-dark"}`}>
-                <span className="num">{t.open}</span><span className="text-base font-normal text-ink-faint"> open</span>
-              </dd>
-              <dd className="mt-1 text-xs text-ink-faint"><span className="num">{t.agrees}</span> agree, <span className="num">{t.explained}</span> explained</dd>
-            </div>
-          </dl>
-
-          {!!data.machines?.length && data.orders_imported && <MachinesPanel machines={data.machines} rows={data.rows} onChanged={changed} />}
-
-          <Panel flush title={`POS by driver on ${fmtDay(day)}`}
-            action={(t.differences > 0 || t.no_terminal > 0) && (
-              <label className="flex items-center gap-2 text-sm text-ink-soft">
-                <input type="checkbox" className="h-4 w-4 accent-ledger-700" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
-                Only what needs attention</label>
-            )}>
-            {data.rows.length === 0 ? (
-              <Empty title="No POS records for this day" hint="Record the drivers' handovers on the Collections page, then import the system's POS orders for the day.">
-                <div className="flex justify-center gap-2">
-                  <button onClick={() => setImporting("orders")} className="btn-primary">Import system orders</button>
+          {(() => {
+            const sheetTotal = t.sheet ? (t.machines_total ?? 0) : t.terminal_total;
+            const both = data.orders_imported && (!!t.sheet || t.terminal_total > 0);
+            const diff = both ? Math.round((sheetTotal - t.system_total) * 100) / 100 : 0;
+            const machines = data.machines ?? [];
+            const drivers = data.rows.filter((r) => r.system_total > 0 || r.order_count > 0);
+            return (<>
+              <dl className="mb-6 grid overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-3 [&>div]:border-paper-line max-sm:[&>div:not(:last-child)]:border-b sm:[&>div:not(:last-child)]:border-r">
+                <div className="p-5">
+                  <dt className="text-sm text-ink-soft">Card payments in the system</dt>
+                  <dd className="mt-1 text-[22px] font-semibold"><Money value={t.system_total} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
+                  <dd className="mt-1 text-xs text-ink-faint">{data.orders_imported ? <><span className="num">{t.order_count}</span> orders paid by card, from the report</> : "Not imported yet"}</dd>
                 </div>
-              </Empty>
-            ) : rows.length === 0 ? (
-              <Empty title="Nothing needs attention" hint="Every difference on this day is explained." />
-            ) : (
-              <div className="relative overflow-x-auto">
-                <table className="w-full min-w-[860px] text-sm">
-                  <thead>
-                    <tr className="border-b border-paper-line text-left text-xs text-ink-faint">
-                      <th className="px-5 py-2.5 font-medium">Driver</th>
-                      <th className="px-3 py-2.5 font-medium">Terminal</th>
-                      <th className="px-3 py-2.5 text-right font-medium">POS orders</th>
-                      <th className="px-3 py-2.5 text-right font-medium">System total</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Terminal total</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Difference</th>
-                      <th className="px-3 py-2.5 font-medium">Status</th>
-                      <th className="w-10 px-3 py-2.5"><span className="sr-only">Details</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => {
-                      const expanded = open === r.driver_id;
-                      return (
-                        <Fragment key={r.driver_id}>
-                          <tr onClick={() => setOpen(expanded ? null : r.driver_id)}
-                            className={`cursor-pointer border-b border-paper-line hover:bg-paper/60 ${r.open ? "bg-short-soft/40" : ""} ${expanded ? "bg-paper/80" : ""}`}>
-                            <td className="px-5 py-3"><span className="num mr-2 font-semibold text-ink-soft">{r.driver_code}</span><span className="font-medium">{r.driver_name}</span></td>
-                            <td className="num px-3 py-3 text-ink-soft">{r.terminal ?? <span className="text-ink-faint">{t.sheet ? "Not matched" : "Not set"}</span>}
-                              {r.paired_by && r.paired_by !== "terminal" && <span className="block text-xs text-ink-faint">{PAIRED_TEXT[r.paired_by]}</span>}</td>
-                            <td className="num px-3 py-3 text-right text-ink-soft">{r.order_count}</td>
-                            <td className="px-3 py-3 text-right"><Money value={r.system_total} /></td>
-                            <td className="px-3 py-3 text-right font-medium">{r.terminal_total == null ? <span className="text-ink-faint">-</span> : <Money value={r.terminal_total} />}</td>
-                            <td className="px-3 py-3 text-right font-semibold">
-                              {r.difference ? <Money value={r.difference} tone={r.difference < 0 ? "short" : "brass"} /> : <span className="text-ink-faint">-</span>}
-                            </td>
-                            <td className="px-3 py-3"><StatusCell r={r} /></td>
-                            <td className="px-3 py-3">
-                              <button aria-expanded={expanded} aria-label={`${expanded ? "Hide" : "Show"} ${r.driver_code} details`}
-                                className="rounded-md p-1 text-ink-faint hover:bg-paper-deep hover:text-ink">
-                                <Icon name="chevronRight" className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`} />
-                              </button>
-                            </td>
-                          </tr>
-                          {expanded && (
-                            <tr className="border-b border-paper-line bg-paper/50">
-                              <td colSpan={8} className="px-5 py-5">
-                                <div className="grid gap-6 lg:grid-cols-2">
-                                  <Orders day={day} r={r} />
-                                  <ReviewBox key={`${r.driver_id}-${r.review?.at ?? ""}`} day={day} r={r} sheet={!!t.sheet} onChanged={changed} />
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                  {!onlyOpen && (
-                    <tfoot><tr className="bg-paper/70 font-semibold">
-                      <td className="px-5 py-3" colSpan={2}>Day total{t.unpaired ? <span className="block text-xs font-normal text-ink-faint">machines include {fmtMoney(t.unpaired_total ?? 0)} not matched yet</span> : null}</td>
-                      <td className="num px-3 py-3 text-right">{t.order_count}</td>
-                      <td className="px-3 py-3 text-right"><Money value={t.system_total} /></td>
-                      <td className="px-3 py-3 text-right"><Money value={t.sheet ? t.machines_total : t.terminal_total} /></td>
-                      <td className="px-3 py-3 text-right">{t.difference ? <Money value={t.difference} tone={t.difference < 0 ? "short" : "brass"} /> : "-"}</td>
-                      <td colSpan={2} />
-                    </tr></tfoot>
+                <div className="p-5">
+                  <dt className="text-sm text-ink-soft">Card machine sheet</dt>
+                  <dd className="mt-1 text-[22px] font-semibold"><Money value={sheetTotal} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
+                  <dd className="mt-1 text-xs text-ink-faint">{t.sheet ? `${machines.length} machines, from the cashier's sheet` : t.terminal_total ? "from the handovers" : "Not imported yet"}</dd>
+                </div>
+                <div className={`p-5 ${both && Math.abs(diff) >= 0.01 ? "bg-short-soft/40" : ""}`}>
+                  <dt className="text-sm text-ink-soft">Difference</dt>
+                  <dd className="mt-1 text-[22px] font-semibold">{!both ? <span className="text-ink-faint">—</span> : Math.abs(diff) >= 0.01 ? <Money value={diff} tone="short" /> : <Money value={0} tone="leaf" />}</dd>
+                  <dd className="mt-1 text-xs text-ink-faint">{!both ? "Import both files to compare" : Math.abs(diff) >= 0.01 ? `The sheet is ${diff < 0 ? "below" : "above"} the system by ${fmtMoney(Math.abs(diff))}` : "The sheet agrees with the system"}</dd>
+                </div>
+              </dl>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Panel flush title="Card payments in the system, by driver">
+                  {drivers.length === 0 ? <p className="px-5 py-6 text-sm text-ink-soft">No card payments imported for this day.</p> : (
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b border-paper-line text-left text-xs text-ink-faint">
+                        <th className="px-5 py-2.5 font-medium">Driver</th><th className="px-3 py-2.5 text-right font-medium">Orders</th>
+                        <th className="px-5 py-2.5 text-right font-medium">Amount</th></tr></thead>
+                      <tbody>
+                        {drivers.map((r) => {
+                          const expanded = open === r.driver_id;
+                          return (
+                            <Fragment key={r.driver_id}>
+                              <tr onClick={() => setOpen(expanded ? null : r.driver_id)} className={`cursor-pointer border-b border-paper-line hover:bg-paper/60 ${expanded ? "bg-paper/80" : ""}`}>
+                                <td className="px-5 py-2.5"><span className="num mr-2 font-semibold text-ink-soft">{r.driver_code}</span>{r.driver_name}</td>
+                                <td className="num px-3 py-2.5 text-right text-ink-soft">{r.order_count}</td>
+                                <td className="px-5 py-2.5 text-right"><Money value={r.system_total} /></td>
+                              </tr>
+                              {expanded && <tr className="border-b border-paper-line bg-paper/50"><td colSpan={3} className="px-5 py-4"><Orders day={day} r={{ ...r, difference: 0 }} /></td></tr>}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot><tr className="bg-paper/70 font-semibold"><td className="px-5 py-2.5">Total</td>
+                        <td className="num px-3 py-2.5 text-right">{t.order_count}</td><td className="px-5 py-2.5 text-right"><Money value={t.system_total} /></td></tr></tfoot>
+                    </table>
                   )}
-                </table>
+                </Panel>
+                <Panel flush title="Card machine sheet">
+                  {machines.length === 0 ? <p className="px-5 py-6 text-sm text-ink-soft">The cashier's card machine sheet for this day is not imported yet.</p> : (
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b border-paper-line text-left text-xs text-ink-faint">
+                        <th className="px-5 py-2.5 font-medium">Machine</th><th className="px-5 py-2.5 text-right font-medium">Amount</th></tr></thead>
+                      <tbody>{machines.map((m) => (
+                        <tr key={m.id} className="border-b border-paper-line"><td className="num px-5 py-2.5 text-ink-soft">{m.terminal}</td>
+                          <td className="px-5 py-2.5 text-right"><Money value={m.amount} /></td></tr>
+                      ))}</tbody>
+                      <tfoot><tr className="bg-paper/70 font-semibold"><td className="px-5 py-2.5">Total, {machines.length} machines</td>
+                        <td className="px-5 py-2.5 text-right"><Money value={t.machines_total} /></td></tr></tfoot>
+                    </table>
+                  )}
+                </Panel>
               </div>
-            )}
-          </Panel>
+            </>);
+          })()}
         </>
       )}
 
@@ -375,9 +332,9 @@ export default function PosCheck({ embedded = false }: { embedded?: boolean }) {
           onClose={() => setImporting(null)} onSaved={(dates) => { setImporting(null); if (dates.length === 1) setDay(dates[0]); changed(); }} />
       )}
       {importing === "terminals" && (
-        <ImportDialog day={day} title="Import the terminal sheet" endpoint="/pos/import/terminals" templateUrl="/api/pos/template/terminals"
+        <ImportDialog day={day} title="Import the card machine sheet" endpoint="/pos/import/terminals" templateUrl="/api/pos/template/terminals"
           noun={["terminal total", "terminal totals"]} columns={TERMINAL_PREVIEW}
-          intro="One row per POS machine with the day's total, or your own sheet with a POS Code column and the date as the amount column's heading. Each machine is matched to a driver by its registered terminal ID or by the exact amount of his system POS orders; you match the rest by hand."
+          intro="The cashier's card machine sheet: one row per machine with its total for the day (a POS Code column and an amount, or the date as the amount column's heading). CODesk adds it up and compares it with the system's card payments."
           onClose={() => setImporting(null)} onSaved={(dates) => { setImporting(null); if (dates.length === 1) setDay(dates[0]); changed(); }} />
       )}
     </>
