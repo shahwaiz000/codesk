@@ -174,6 +174,22 @@ def update(sid: int, body: StationIn, db: Session = Depends(get_db), user: str =
     return station_dict(s)
 
 
+@router.post("/{sid}/adopt")
+def adopt(sid: int, db: Session = Depends(get_db), user: str = Depends(current_user)):
+    """Put every driver without a station in this one, with his records saved before stations existed."""
+    s = db.get(Station, sid)
+    if not s:
+        raise HTTPException(404, "Station not found")
+    drivers = db.query(Driver).filter(Driver.station_id.is_(None)).all()
+    for d in drivers:
+        d.station_id = s.id
+    db.flush()
+    records = assign_missing(db)
+    audit.record(db, user, "updated", "station", s.id, f"{len(drivers)} drivers without a station put in {s.code} {s.name}")
+    db.commit()
+    return {"drivers": len(drivers), "records": records, "station": station_dict(s)}
+
+
 @router.get("/overview")
 def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     """Every station's figures for one day, side by side, plus each one's cash still to deposit."""

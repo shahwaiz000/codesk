@@ -115,3 +115,26 @@ def test_a_new_station_from_a_report_gets_its_city_and_region(client):
         assert (st.code, st.name, st.city, st.region) == ("RUH-AAR", "Riyadh Al Aarid", "Riyadh", "Riyadh")
         assert stations.find_or_add(db, "", "Riyadh Al Aarid Station").id == st.id  # found again next time
         db.rollback()
+
+
+def test_drivers_without_a_station_can_be_put_in_one(client):
+    with SessionLocal() as db:
+        from app.models import Collection, Driver
+        d = db.query(Driver).filter_by(code="D-102").one()
+        d.station_id = None
+        for c in db.query(Collection).execution_options(all_stations=True).filter_by(driver_id=d.id):
+            c.station_id = None
+        db.commit()
+    assert client.get("/api/stations").json()["unassigned_drivers"] >= 1
+    tif = sid(client, "TIF")
+    r = client.post(f"/api/stations/{tif}/adopt").json()
+    assert r["drivers"] >= 1 and r["records"] >= 1 and client.get("/api/stations").json()["unassigned_drivers"] == 0
+    assert {x["code"]: x for x in client.get("/api/drivers").json()}["D-102"]["station_code"] == "TIF"
+    assert client.get("/api/collections", params={"date": DAY}, headers={"X-Station": str(tif)}).status_code == 200
+    with SessionLocal() as db:
+        from app.models import Collection, Driver
+        d = db.query(Driver).filter_by(code="D-102").one()
+        d.station_id = sid(client, "JED")
+        for c in db.query(Collection).execution_options(all_stations=True).filter_by(driver_id=d.id):
+            c.station_id = d.station_id
+        db.commit()

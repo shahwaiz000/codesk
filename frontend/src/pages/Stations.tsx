@@ -53,6 +53,36 @@ function StationForm({ station, onClose, onSaved }: { station: Station | null; o
   );
 }
 
+function Unassigned({ count, stations, onDone }: { count: number; stations: Station[]; onDone: (text: string) => void }) {
+  const [target, setTarget] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function move() {
+    setBusy(true); setError(null);
+    try {
+      const r = await send<{ drivers: number; station: Station }>(`/stations/${target}/adopt`, "POST");
+      onDone(`${r.drivers} ${r.drivers === 1 ? "driver" : "drivers"} put in ${r.station.name}, with their past records.`);
+    } catch (e) { setError((e as Error).message); }
+    setBusy(false);
+  }
+  return (
+    <div className="mb-6 rounded-panel border border-brass/30 bg-brass-soft/60 p-4">
+      <p className="text-sm font-medium text-brass-dark">{count} {count === 1 ? "driver has" : "drivers have"} no station yet</p>
+      <p className="mt-0.5 text-sm text-ink-soft">Put them all in one station. Their handovers, expenses and deposits from before move with them.</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <select aria-label="Put them in" className="field mt-0 w-auto" value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">Choose the station</option>
+          {byRegion(stations.filter((s) => s.active)).map(([region, list]) => (
+            <optgroup key={region} label={region}>{list.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}</optgroup>
+          ))}
+        </select>
+        <button disabled={!target || busy} onClick={move} className="btn-primary">Put them in this station</button>
+      </div>
+      <FormError message={error} />
+    </div>
+  );
+}
+
 export default function Stations() {
   const { data, error, loading, reload } = useApi<StationList>("/stations");
   const { station: current, choose, refresh } = useStation();
@@ -60,6 +90,7 @@ export default function Stations() {
   const [query, setQuery] = useState("");
   const [showOff, setShowOff] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
   const changed = () => { reload(); refresh(); };
 
   const list = Array.isArray(data?.stations) ? data!.stations : [];
@@ -89,9 +120,11 @@ export default function Stations() {
             <div className="p-5"><dt className="text-sm text-ink-soft">With drivers</dt><dd className="num mt-1 text-2xl font-semibold">{staffed}</dd></div>
             <div className="p-5"><dt className="text-sm text-ink-soft">Drivers without a station</dt>
               <dd className={`num mt-1 text-2xl font-semibold ${data.unassigned_drivers ? "text-brass-dark" : ""}`}>{data.unassigned_drivers}</dd>
-              {data.unassigned_drivers > 0 && <dd className="mt-1 text-xs text-ink-faint">Import a report with a Site column, or set it on the Drivers page</dd>}</div>
+              {data.unassigned_drivers > 0 && <dd className="mt-1 text-xs text-ink-faint">Import a report with a Site column, or put them in a station below</dd>}</div>
           </dl>
 
+          {data.unassigned_drivers > 0 && <Unassigned count={data.unassigned_drivers} stations={list} onDone={(t) => { setDone(t); changed(); }} />}
+          {done && <p className="mb-4 rounded-md bg-leaf-soft px-3 py-2 text-sm text-leaf-dark">{done}</p>}
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <label className="relative min-w-[14rem] flex-1 sm:max-w-xs">
               <span className="sr-only">Search stations</span>
