@@ -405,7 +405,8 @@ def demo_slip(db: Session = Depends(get_db)):
     row = next((r for r in deposits.ledger(db) if r["pending"] > 0), None)
     if not row:
         raise HTTPException(409, "No day is waiting to be deposited")
-    total = int(-(-row["pending"] // 5) * 5)  # rounded up to whole notes, as at the bank
+    owed = max(row["pending"], row["left"])  # the day's cash and anything earlier days left unbanked
+    total = int(-(-owed // 5) * 5)  # rounded up to whole notes, as at the bank
     left, lines = total, []
     for note in (500, 200, 100, 50, 20, 10, 5):
         count = left // note

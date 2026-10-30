@@ -1,5 +1,5 @@
 import { FormEvent, useRef, useState } from "react";
-import { fmtDay, fmtMoney, fmtWhen, send, upload, useApi } from "../lib";
+import { fmtDay, fmtMoney, fmtWhen, send, upload, useApi, withStation } from "../lib";
 import type { DepositDay } from "../types";
 import { Icon } from "./icons";
 import { FormError, Money, Panel } from "./ui";
@@ -175,7 +175,7 @@ export default function SlipReader({ days, onRecorded }: { days: DepositDay[]; o
       {ai?.engine === "gemini" && ai.ready && (
         <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
           <span className="rounded-full bg-leaf-soft px-2.5 py-0.5 text-xs font-semibold text-leaf-dark">Google Gemini · demo data</span>
-          No demo slip at hand? <a href="/api/slips/demo-slip" className="font-medium text-leaf-dark underline underline-offset-2">Make a demo slip</a> for the day waiting to be deposited, then read it.
+          No demo slip at hand? <a href={withStation("/api/slips/demo-slip")} className="font-medium text-leaf-dark underline underline-offset-2">Make a demo slip</a> for the day waiting to be deposited, then read it.
         </p>
       )}
       {reading && (
