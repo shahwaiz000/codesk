@@ -8,17 +8,15 @@ type NavItem = { to: string; label: string; icon: IconName };
 /* Pages are added here as each stage is finished, so the menu never points at an empty page. */
 export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "Daily desk", items: [
-    { to: "/", label: "Dashboard", icon: "dashboard" },
-    { to: "/collections", label: "Collections", icon: "cash" },
-    { to: "/pos", label: "POS check", icon: "card" },
-    { to: "/expenses", label: "Expenses & advances", icon: "receipt" },
-    { to: "/deposits", label: "Bank deposits", icon: "bank" },
+    { to: "/", label: "Overview", icon: "dashboard" },
+    { to: "/station", label: "Station day", icon: "warehouse" },
+    { to: "/deposits", label: "Deposit history", icon: "bank" },
   ] },
   { title: "Records", items: [
     { to: "/reports", label: "Reports", icon: "report" },
     { to: "/ask", label: "Ask CODesk", icon: "spark" },
     { to: "/drivers", label: "Drivers", icon: "drivers" },
-    { to: "/stations", label: "Stations", icon: "warehouse" },
+    { to: "/stations", label: "Stations", icon: "pin" },
   ] },
 ];
 

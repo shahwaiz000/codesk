@@ -223,7 +223,7 @@ function ReviewBox({ day, r, sheet, onChanged }: { day: string; r: PosRow; sheet
   );
 }
 
-export default function PosCheck() {
+export default function PosCheck({ embedded = false }: { embedded?: boolean }) {
   const { day, setDay } = useBusinessDay();
   const [version, setVersion] = useState(0);
   const { data, error, loading, reload } = useApi<PosDay>(`/pos?date=${day}&v=${version}`);
@@ -236,12 +236,12 @@ export default function PosCheck() {
 
   return (
     <>
-      <PageHeader title="POS check" subtitle="For each driver, the orders the system shows as closed by POS against the total on his POS terminal. Both should agree to the halala.">
+      <PageHeader embedded={embedded} title="POS check" subtitle="For each driver, the orders the system shows as closed by POS against the total on his POS terminal. Both should agree to the halala.">
         <button onClick={() => setImporting("orders")} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import system orders</button>
         <button onClick={() => setImporting("terminals")} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import terminal sheet</button>
       </PageHeader>
 
-      <DayPicker refreshKey={version} />
+      {!embedded && <DayPicker refreshKey={version} />}
 
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>

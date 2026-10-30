@@ -15,7 +15,8 @@ export const Panel = ({ title, action, children, className = "", flush = false }
   </section>
 );
 
-export const PageHeader = ({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) => (
+export const PageHeader = ({ title, subtitle, children, embedded = false }: { title: string; subtitle?: string; children?: ReactNode; embedded?: boolean }) =>
+  embedded ? (children ? <div className="mb-4 flex flex-wrap items-center justify-end gap-2">{children}</div> : null) : (
   <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
     <div className="max-w-2xl">
       <h1 className="text-[28px] font-semibold leading-tight text-ink">{title}</h1>

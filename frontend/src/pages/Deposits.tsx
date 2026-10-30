@@ -7,11 +7,11 @@ import { fmtDay, fmtMoney, parseAmount, send, useApi } from "../lib";
 import { useStation } from "../stations";
 import type { DepositDay, DepositLedger, DepositStatus, Slip } from "../types";
 
-const TONE: Record<DepositStatus, "leaf" | "brass" | "short" | "muted"> = {
+export const TONE: Record<DepositStatus, "leaf" | "brass" | "short" | "muted"> = {
   deposited: "leaf", not_due: "muted", due_today: "brass", overdue: "short", short: "short", over: "brass", nothing: "muted",
 };
 
-function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; banks: string[]; onClose: () => void; onSaved: () => void }) {
+export function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; banks: string[]; onClose: () => void; onSaved: () => void }) {
   const [date, setDate] = useState(todayIso() < row.due_on ? row.date : todayIso());
   const [bank, setBank] = useState(banks[0] ?? "");
   const [slip, setSlip] = useState("");
@@ -66,7 +66,7 @@ function DepositDialog({ row, banks, onClose, onSaved }: { row: DepositDay; bank
   );
 }
 
-function Slips({ row, onDelete }: { row: DepositDay; onDelete: (s: Slip) => void }) {
+export function Slips({ row, onDelete }: { row: DepositDay; onDelete: (s: Slip) => void }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <div>
@@ -142,7 +142,7 @@ export default function Deposits() {
 
   return (
     <>
-      <PageHeader title="Bank deposits" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. A day's cash is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash. Anything not deposited is carried to the next day, like a bank statement.`} />
+      <PageHeader title="Deposit history" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. A day's cash is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash. Anything not deposited is carried to the next day, like a bank statement.`} />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
           <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>div]:border-paper-line max-lg:[&>div:nth-child(-n+2)]:border-b max-lg:[&>div:nth-child(odd)]:border-r lg:[&>div:not(:last-child)]:border-r">

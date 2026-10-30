@@ -109,7 +109,7 @@ function StatusBadge({ h }: { h: Handover }) {
   return <Badge tone="leaf">Agrees</Badge>;
 }
 
-export default function Collections() {
+export default function Collections({ embedded = false }: { embedded?: boolean }) {
   const { day, setDay, refreshMeta } = useBusinessDay();
   const [version, setVersion] = useState(0);
   const { data, error, loading, reload } = useApi<CollectionDay>(`/collections?date=${day}&v=${version}`);
@@ -140,18 +140,18 @@ export default function Collections() {
 
   return (
     <>
-      <PageHeader title="Collections" subtitle={paid
+      <PageHeader embedded={embedded} title="Collections" subtitle={paid
         ? "The cash and card money each driver handed over, from your system's collection report. Orders are closed only when paid in full, so this is the day's cash that goes to the bank."
         : "What each driver handed over: cash counted at the desk against the cash the system expects, plus POS card totals."}>
         <button onClick={() => setImporting(true)} className={paid ? "btn-primary" : "btn-quiet"}><Icon name="upload" className="h-4 w-4" />Import file</button>
         <button onClick={() => setDialog({ handover: null })} disabled={free.length === 0} className={paid ? "btn-quiet" : "btn-primary"}><Icon name="plus" className="h-4 w-4" />{paid ? "Add by hand" : "Record handover"}</button>
       </PageHeader>
 
-      <DayPicker refreshKey={version} />
+      {!embedded && <DayPicker refreshKey={version} />}
 
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
-          {paid ? <CashHero day={day} t={t} /> : (
+          {paid ? (embedded ? null : <CashHero day={day} t={t} />) : (
           <dl className="mb-6 grid grid-cols-2 divide-paper-line overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 lg:divide-x [&>*]:border-paper-line max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r">
             <Figure label="Cash counted" foot={<>Expected <span className="num">{fmtMoney(t.expected_cash)}</span></>}>
               <Money value={t.cash_received} /> <span className="text-sm font-normal text-ink-faint">SAR</span>

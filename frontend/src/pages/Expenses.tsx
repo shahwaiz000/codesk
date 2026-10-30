@@ -322,7 +322,7 @@ const EXPENSE_PREVIEW = [
   { label: "Amount", right: true, cell: money("amount") },
 ];
 
-export default function Expenses() {
+export default function Expenses({ embedded = false }: { embedded?: boolean }) {
   const { day, setDay } = useBusinessDay();
   const [importing, setImporting] = useState(false);
   const [version, setVersion] = useState(0);
@@ -345,7 +345,7 @@ export default function Expenses() {
 
   return (
     <>
-      <PageHeader title="Expenses & advances" subtitle="Money paid to drivers out of the day's cash: salaries, incentives, final settlements, fuel, travel and advances. Everything here lowers that day's cash to deposit.">
+      <PageHeader embedded={embedded} title="Expenses & advances" subtitle="Money paid to drivers out of the day's cash: salaries, incentives, final settlements, fuel, travel and advances. Everything here lowers that day's cash to deposit.">
         <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import sheet</button>
         <button onClick={() => setDialog({ expense: null })} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Pay out</button>
       </PageHeader>
@@ -356,10 +356,10 @@ export default function Expenses() {
           onClose={() => setImporting(false)}
           onSaved={(dates) => { setImporting(false); if (dates.length === 1) setDay(dates[0]); changed(); drivers.reload(); }} />
       )}
-      <DayPicker refreshKey={version} />
+      {!embedded && <DayPicker refreshKey={version} />}
 
       <UnusualBox items={odd} onChanged={changed} />
-      {data && t && t.count > 0 && <PaidOutHero day={day} t={t} drivers={new Set(data.rows.map((r) => r.driver_id)).size} />}
+      {!embedded && data && t && t.count > 0 && <PaidOutHero day={day} t={t} drivers={new Set(data.rows.map((r) => r.driver_id)).size} />}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0">
           {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
