@@ -1,3 +1,4 @@
+import { todayIso } from "../businessDay";
 import { FormEvent, useRef, useState } from "react";
 import { fmtDay, fmtMoney, fmtWhen, send, upload, useApi, withStation } from "../lib";
 import type { DepositDay } from "../types";
@@ -175,7 +176,16 @@ export default function SlipReader({ days, onRecorded }: { days: DepositDay[]; o
       {ai?.engine === "gemini" && ai.ready && (
         <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
           <span className="rounded-full bg-leaf-soft px-2.5 py-0.5 text-xs font-semibold text-leaf-dark">Google Gemini · demo data</span>
-          No demo slip at hand? <a href={withStation("/api/slips/demo-slip")} className="font-medium text-leaf-dark underline underline-offset-2">Make a demo slip</a> for the day waiting to be deposited, then read it.
+          {(() => {
+            const next = days.find((d) => d.pending > 0);
+            if (!next) return <>No day is waiting for the bank, so there is nothing to make a demo slip for.</>;
+            const owed = Math.max(next.pending, next.left);
+            const amount = Math.ceil(owed / 5) * 5;
+            const dated = next.due_on < todayIso() ? next.due_on : todayIso();
+            return <>No demo slip at hand? <a href={withStation("/api/slips/demo-slip")} className="font-medium text-leaf-dark underline underline-offset-2">Make a demo slip</a>{" "}
+              for the cash of <b className="font-semibold text-ink">{fmtDay(next.date)}{next.station ? `, ${next.station}` : ""}</b>: <span className="num font-semibold text-ink">{fmtMoney(amount)}</span> SAR
+              {owed > next.pending ? " (with the amount left from earlier days)" : ""}, dated {fmtDay(dated)}. Then read it.</>;
+          })()}
         </p>
       )}
       {reading && (
