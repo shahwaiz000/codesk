@@ -59,7 +59,9 @@ def _norm(text: str) -> str:
 
 
 def _clean(code: str, name: str) -> tuple[str, str]:
-    return " ".join((code or "").split()).upper()[:30], " ".join((name or "").split())[:80]
+    """Tidy spaces; "Riyadh Al Aarid Station" is the station "Riyadh Al Aarid"."""
+    name = " ".join((name or "").split())[:80]
+    return " ".join((code or "").split()).upper()[:30], re.sub(r"\s+(station|hub|warehouse|branch)$", "", name, flags=re.I) or name
 
 
 def match(db: Session, code: str, name: str = "") -> Station | None:
@@ -84,8 +86,14 @@ def find_or_add(db: Session, code: str, name: str = "", user: str = "system") ->
     found = match(db, code, name)
     if found:
         return found
-    key = _norm(name or code)
-    s = Station(code=code or key.upper()[:30], name=name or code, city="", region="")
+    city = next(((c, r, k) for k, c, r in KSA if _norm(c) in _norm(name)), None)
+    if not code:  # a short code like RUH-AAR: the city's code and the start of the area's name
+        rest = [w for w in re.split(r"[^A-Za-z0-9]+", re.sub(re.escape(city[0]), "", name, flags=re.I) if city else name)
+                if w and w.lower() not in ("al", "el", "station", "hub")]
+        code = "-".join(x for x in ((city[2] if city else ""), (rest[0][:3].upper() if rest else "")) if x) or _norm(name).upper()[:8]
+        while db.query(Station).filter(func.upper(Station.code) == code).first():
+            code = code + "2"
+    s = Station(code=code, name=name or code, city=city[0] if city else "", region=city[1] if city else "")
     db.add(s)
     db.flush()
     audit.record(db, user, "created", "station", s.id, f"Station {s.code} {s.name} (from a report)")

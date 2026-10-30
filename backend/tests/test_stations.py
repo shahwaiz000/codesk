@@ -26,7 +26,7 @@ def test_a_report_with_a_site_column_puts_drivers_in_their_station(client):
     up = lambda: {"file": ("report.csv", text.encode(), "text/csv")}  # noqa: E731
     r = client.post("/api/drivers/import", files=up()).json()
     rows = {x["driver_code"]: x for x in r["rows"] if x["status"] != "skipped"}
-    assert rows["S-901"]["station"] == "Dammam" and "new station Hafr New Hub" in rows["S-902"]["problems"][0]
+    assert rows["S-901"]["station"] == "Dammam" and "new station Hafr New" in rows["S-902"]["problems"][0]
     client.post("/api/drivers/import", files=up(), data={"commit": "true"})
     drivers = {d["code"]: d for d in client.get("/api/drivers").json()}
     assert drivers["S-901"]["station_code"] == "DMM" and drivers["S-902"]["station_code"] == "NEW9"
@@ -47,7 +47,7 @@ def test_a_report_with_a_site_column_puts_drivers_in_their_station(client):
     r = client.post("/api/deposits", json=slip, headers={"X-Station": str(dmm)}).json()
     assert r["status"] == "deposited" and r["station"] == "Dammam"
     rows = [x for x in client.get("/api/deposits", params={"end": "2026-05-21", "count": 2}).json()["rows"] if x["date"] == DAY]
-    assert {x["station"]: x["status"] for x in rows} == {"Dammam": "deposited", "Hafr New Hub": "overdue"}
+    assert {x["station"]: x["status"] for x in rows} == {"Dammam": "deposited", "Hafr New": "overdue"}
     together = [x for x in client.get("/api/deposits", params={"end": "2026-05-21", "count": 2, "days": True}).json()["rows"] if x["date"] == DAY]
     assert together[0]["status"] == "overdue" and together[0]["to_deposit"] == 220.0  # the day is as late as its latest station
 
@@ -106,3 +106,12 @@ def test_old_extra_stations_are_removed_when_unused(client):
         stations.ensure_defaults(db)
         assert db.query(Station).filter(Station.code == "SHQ").count() == 0
         assert len(KSA) == 25
+
+
+def test_a_new_station_from_a_report_gets_its_city_and_region(client):
+    from app import stations
+    with SessionLocal() as db:
+        st = stations.find_or_add(db, "", "Riyadh Al Aarid Station")
+        assert (st.code, st.name, st.city, st.region) == ("RUH-AAR", "Riyadh Al Aarid", "Riyadh", "Riyadh")
+        assert stations.find_or_add(db, "", "Riyadh Al Aarid Station").id == st.id  # found again next time
+        db.rollback()
