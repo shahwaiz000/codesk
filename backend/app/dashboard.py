@@ -44,6 +44,9 @@ def day_figures(db: Session, day: date, deposit_rows: dict) -> dict:
         "to_deposit": d["to_deposit"] if d else 0.0, "deposited": d["deposited"] if d else 0.0,
         "pending": d["pending"] if d else 0.0, "deposit_status": d["status"] if d else "nothing",
         "deposit_status_text": d["status_text"] if d else "Nothing to deposit", "due_on": d["due_on"] if d else None,
+        # the running balance: what earlier days left unbanked, what the cashier had to deposit in all, what is still left
+        "brought_forward": d.get("brought_forward", 0.0) if d else 0.0, "total_due": d.get("total_due", 0.0) if d else 0.0,
+        "left": d.get("left", 0.0) if d else 0.0,
     }
 
 

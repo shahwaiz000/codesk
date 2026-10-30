@@ -80,6 +80,7 @@ export interface DashFigures {
   total_collected: number; orders: number; drivers: number; expenses: number; advances: number;
   paid_out: number; returned: number; to_deposit: number; deposited: number; pending: number;
   deposit_status: DepositStatus; deposit_status_text: string; due_on: string | null;
+  brought_forward?: number; total_due?: number; left?: number;
 }
 export interface DashIssue { kind: "cash_short" | "cash_over" | "terminal_short" | "terminal_over"; amount: number; page: string; explained?: boolean }
 export interface DashAlert { kind: string; date: string; amount: number; page: string; text: string }

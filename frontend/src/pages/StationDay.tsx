@@ -76,7 +76,8 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
   if (!station) return <ChooseStation />;
   const f = data?.figures;
   const notYet = f && f.deposited === 0;
-  const late = !!f && f.pending > 0 && (f.deposit_status === "overdue" || f.deposit_status === "short");
+  // red when this day is late or short, or money from earlier days is still not in the bank
+  const late = !!f && ((f.pending > 0 && (f.deposit_status === "overdue" || f.deposit_status === "short")) || (f.left ?? 0) - f.pending > 0.99);
 
   return (
     <>
@@ -88,13 +89,14 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
           <Box label="POS (card)" foot={f && f.pos_difference ? <span className="text-short">machines differ by {fmtMoney(f.pos_difference)}</span> : f?.pos_awaiting ? "waiting for the system file" : "machines agree"}>
             <Money value={f?.pos_terminal || f?.pos_system} /></Box>
           <Box label="Expenses paid out"><Money value={f?.paid_out} tone="muted" /></Box>
-          <Box label="To deposit" foot={f?.due_on ? `due ${fmtDay(f.due_on)}` : ""}><Money value={f?.to_deposit} /></Box>
+          <Box label="To deposit" foot={f ? (f.brought_forward ? <>day's cash <span className="num">{fmtMoney(f.to_deposit)}</span> + <span className="num text-brass-dark">{fmtMoney(f.brought_forward)}</span> from earlier days</> : f.due_on ? `due ${fmtDay(f.due_on)}` : "") : ""}>
+            <Money value={f ? (f.total_due ?? f.to_deposit) : undefined} /></Box>
           <Box label="Deposited" tone={notYet && f?.to_deposit ? "bg-paper/60" : ""}
             foot={f ? (notYet ? (f.to_deposit ? "not in the bank yet" : "") : f.deposit_status_text) : ""}>
             {notYet ? <span className="text-ink-faint">—</span> : <Money value={f?.deposited} tone="leaf" />}</Box>
-          <Box label="Left to deposit" tone={late ? "bg-short-soft/50" : ""}
-            foot={f ? (f.pending > 0 ? f.deposit_status_text : "nothing left") : ""}>
-            <Money value={f?.pending} tone={late ? "short" : f && f.pending > 0 ? "brass" : "leaf"} /></Box>
+          <Box label="Left, goes to the next day" tone={late ? "bg-short-soft/50" : ""}
+            foot={f ? ((f.left ?? 0) > 0 ? f.deposit_status_text : "nothing left") : ""}>
+            <Money value={f ? Math.max(f.left ?? f.pending, 0) : undefined} tone={late ? "short" : f && (f.left ?? 0) > 0 ? "brass" : "leaf"} /></Box>
         </dl>
       )}
 
