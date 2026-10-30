@@ -16,7 +16,7 @@ export default function ReceiptReader({ day, onSaved }: { day: string; onSaved: 
   const ai = useApi<{ engine: string; ready: boolean; demo_mode: boolean }>("/ai").data;
   const parts = useApi<{ parts: number }>(`/receipts/demo/parts?date=${day}`).data?.parts ?? 0;
   const input = useRef<HTMLInputElement>(null);
-  const [photos, setPhotos] = useState<{ url: string; name: string; error: string }[]>([]);
+  const [photos, setPhotos] = useState<{ url: string; name: string; error: string; file: File }[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<"" | "reading" | "saving">("");
@@ -27,7 +27,7 @@ export default function ReceiptReader({ day, onSaved }: { day: string; onSaved: 
   async function choose(files: FileList | null) {
     if (!files?.length) return;
     const list = [...files].slice(0, 12);
-    setPhotos(list.map((f) => ({ url: URL.createObjectURL(f), name: f.name, error: "" })));
+    setPhotos(list.map((f) => ({ url: URL.createObjectURL(f), name: f.name, error: "", file: f })));
     setRows([]); setError(null); setDone(null); setBusy("reading");
     const form = new FormData();
     list.forEach((f) => form.append("files", f));
@@ -41,6 +41,21 @@ export default function ReceiptReader({ day, onSaved }: { day: string; onSaved: 
     } catch (e) { setError((e as Error).message); }
     setBusy("");
     if (input.current) input.current.value = "";
+  }
+
+  async function again(i: number) {  // read one photo again, e.g. after Google's AI was busy
+    setBusy("reading"); setError(null);
+    const form = new FormData();
+    form.append("files", photos[i].file);
+    form.append("business_date", day);
+    try {
+      const r = await upload<ReadResult>("/receipts/read", form);
+      const p = r.photos[0];
+      setPhotos((ps) => ps.map((x, j) => (j === i ? { ...x, error: p?.error ?? "" } : x)));
+      const read: Row[] = (p?.receipts ?? []).map((x) => ({ key: next++, photo: i, terminal: x.terminal, amount: x.total == null ? "" : String(x.total), count: x.count, checks: x.checks }));
+      if (read.length) setRows((rs) => [...rs.filter((x) => x.photo !== i), ...read]);
+    } catch (e) { setError((e as Error).message); }
+    setBusy("");
   }
 
   const set = (key: number, k: "terminal" | "amount", v: string) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, [k]: v } : r)));
@@ -88,7 +103,8 @@ export default function ReceiptReader({ day, onSaved }: { day: string; onSaved: 
               </a>
               <div className="min-w-0 space-y-2">
                 <p className="truncate text-xs text-ink-faint">{p.name}</p>
-                {p.error && <p className="text-sm text-short">{p.error}</p>}
+                {p.error && <div className="space-y-2"><p className="text-sm text-short">{p.error}</p>
+                  {cloud && <button onClick={() => again(i)} className="btn-quiet px-3 py-1.5 text-xs">Read again</button>}</div>}
                 {rows.filter((r) => r.photo === i).map((r) => (
                   <div key={r.key} className="rounded-md bg-paper p-2.5">
                     <div className="flex items-center gap-2">
