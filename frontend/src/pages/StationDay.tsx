@@ -91,7 +91,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
       {error ? <ErrorBox message={error} retry={reload} /> : (
         <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-3 lg:grid-cols-6 [&>div]:border-paper-line [&>div]:border-b lg:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
           <Box label="Cash collected" foot={f ? `${f.drivers} drivers` : ""}><Money value={f?.cash_received} /></Box>
-          <Box label="POS (card)" foot={f && f.pos_difference ? <span className="text-short">sheet differs by {fmtMoney(f.pos_difference)}</span> : f?.pos_awaiting ? "waiting for the system file" : "sheet agrees"}>
+          <Box label="POS (card)" foot={f && f.pos_difference ? <span className="text-short">sheet differs by {fmtMoney(f.pos_difference)}</span> : f?.pos_awaiting ? "waiting for the system file" : f && !(f.pos_terminal || f.pos_system) ? "no card payments" : "sheet agrees"}>
             <Money value={f?.pos_terminal || f?.pos_system} /></Box>
           <Box label="Expenses paid out"><Money value={f?.paid_out} tone="muted" /></Box>
           <Box label="To deposit" foot={f ? (f.brought_forward ? <>day's cash <span className="num">{fmtMoney(f.to_deposit)}</span> + <span className="num text-brass-dark">{fmtMoney(f.brought_forward)}</span> from earlier days</> : f.due_on ? `due ${fmtDay(f.due_on)}` : "") : ""}>
@@ -105,7 +105,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
         </dl>
       )}
 
-      <DayCheck day={day} stationId={station.id} />
+      <DayCheck day={day} stationId={station.id} empty={!!f && f.drivers === 0 && f.to_deposit === 0 && f.paid_out === 0} />
 
       <div role="tablist" aria-label="Part of the day" className="mb-6 flex gap-1 overflow-x-auto rounded-xl bg-paper-deep p-1">
         {TABS.map((t) => (

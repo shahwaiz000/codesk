@@ -6,7 +6,7 @@ import { FormError } from "./ui";
 type Check = { checked_by: string; checked_at: string; note: string } | null;
 
 /** The supervisor's sign-off: this station's day has been checked, by whom and when. */
-export default function DayCheck({ day, stationId }: { day: string; stationId: number }) {
+export default function DayCheck({ day, stationId, empty = false }: { day: string; stationId: number; empty?: boolean }) {
   const [version, setVersion] = useState(0);
   const { data } = useApi<{ check: Check }>(`/supervisor/check?date=${day}&station_id=${stationId}&v=${version}`);
   const [note, setNote] = useState("");
@@ -23,6 +23,7 @@ export default function DayCheck({ day, stationId }: { day: string; stationId: n
     setBusy(false);
   }
   if (!data) return null;
+  if (empty && !data.check) return null;  // nothing came in on this day, so there is nothing to sign off
   return c ? (
     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-panel border border-leaf/30 bg-leaf-soft/60 px-5 py-3 text-sm">
       <span className="grid h-7 w-7 place-items-center rounded-full bg-leaf text-white"><Icon name="check" className="h-4 w-4" /></span>

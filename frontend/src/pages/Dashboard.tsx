@@ -88,13 +88,13 @@ export default function Dashboard() {
           <div className="p-5">
             <dt className="text-sm text-ink-soft">Cash collected</dt>
             <dd className="mt-1 text-[22px] font-semibold"><Money value={f.cash_received} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
-            <dd className="mt-1 text-xs text-ink-faint">{f.drivers} drivers handed over</dd>
+            <dd className="mt-1 text-xs text-ink-faint">{f.drivers ? `${f.drivers} drivers handed over` : "Nothing imported for this day"}</dd>
           </div>
           <div className="p-5">
             <dt className="text-sm text-ink-soft">Card (POS)</dt>
             <dd className="mt-1 text-[22px] font-semibold"><Money value={f.pos_terminal || f.pos_system} /></dd>
             <dd className={`mt-1 text-xs ${Math.abs(f.pos_difference) >= 0.01 ? "text-short" : "text-ink-faint"}`}>
-              {Math.abs(f.pos_difference) >= 0.01 ? `Machines differ from the system by ${fmtMoney(f.pos_difference)}` : f.pos_awaiting ? "Waiting for the system's card payments" : "Machines match the system"}</dd>
+              {Math.abs(f.pos_difference) >= 0.01 ? `Machines differ from the system by ${fmtMoney(f.pos_difference)}` : f.pos_awaiting ? "Waiting for the system's card payments" : !(f.pos_terminal || f.pos_system) ? "No card payments on this day" : "Machines match the system"}</dd>
           </div>
           <Link to="/deposits" className="p-5 hover:bg-paper/50">
             <dt className="text-sm text-ink-soft">In the bank</dt>

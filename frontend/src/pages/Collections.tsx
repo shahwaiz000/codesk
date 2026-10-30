@@ -184,10 +184,9 @@ export default function Collections({ embedded = false }: { embedded?: boolean }
             )}>
             {actionError && <div className="px-5 pt-4"><FormError message={actionError} /></div>}
             {data.rows.length === 0 ? (
-              <Empty title="No handovers recorded for this day" hint="Record each driver as they hand over, or import the day's file from your delivery system.">
+              <Empty title="Nothing imported for this day yet" hint="Import the cashier's collection report (COD report) for this day. New drivers in it are added by themselves.">
                 <div className="flex justify-center gap-2">
-                  <button onClick={() => setImporting(true)} className="btn-quiet">Import file</button>
-                  <button onClick={() => setDialog({ handover: null })} className="btn-primary">Record handover</button>
+                  <button onClick={() => setImporting(true)} className="btn-primary"><Icon name="upload" className="h-4 w-4" />Import the COD report</button>
                 </div>
               </Empty>
             ) : (
