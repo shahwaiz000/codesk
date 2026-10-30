@@ -77,7 +77,7 @@ const DRIVER_PREVIEW = [
   { label: "POS terminal", cell: (r: PreviewRow) => <span className="num text-ink-soft">{(r.terminal as string) ?? "-"}</span> },
 ];
 
-export default function Drivers() {
+export default function Drivers({ embedded = false }: { embedded?: boolean }) {
   const { data, error, loading, reload } = useApi<Driver[]>("/drivers");
   const { station, refresh: refreshStations } = useStation();
   const [query, setQuery] = useState("");
@@ -110,21 +110,17 @@ export default function Drivers() {
 
   return (
     <>
-      <PageHeader title="Drivers" subtitle={`The driver IDs every collection, POS check and expense is matched against${station ? `, at ${station.name}` : ", at every station"}. Shortages and open advances cover all recorded days.`}>
+      <PageHeader embedded={embedded} title="Drivers" subtitle={`The driver IDs every collection, POS check and expense is matched against${station ? `, at ${station.name}` : ", at every station"}. Open advances cover all recorded days.`}>
         <button onClick={() => setImporting(true)} className="btn-quiet"><Icon name="upload" className="h-4 w-4" />Import drivers</button>
         <button onClick={() => setEditing("new")} className="btn-primary"><Icon name="plus" className="h-4 w-4" />Add driver</button>
       </PageHeader>
 
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && (
         <>
-          <dl className="mb-6 grid grid-cols-1 overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-3">
+          <dl className="mb-6 grid grid-cols-1 overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-2">
             <div className="border-b border-paper-line p-5 sm:border-b-0 sm:border-r">
               <dt className="text-sm text-ink-soft">Active drivers</dt>
               <dd className="num mt-1 text-2xl font-semibold">{active.length}{totals.inactive > 0 && <span className="ml-2 text-sm font-normal text-ink-faint">+{totals.inactive} inactive</span>}</dd>
-            </div>
-            <div className="border-b border-paper-line p-5 sm:border-b-0 sm:border-r">
-              <dt className="text-sm text-ink-soft">Cash short, all days</dt>
-              <dd className="mt-1 text-2xl font-semibold"><Money value={totals.shortage} tone={totals.shortage ? "short" : undefined} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
             </div>
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Advances not yet recovered</dt>
@@ -168,7 +164,6 @@ export default function Drivers() {
                       <th className="px-3 py-2.5 font-medium">Hub</th>
                       <th className="px-3 py-2.5 font-medium">POS terminal</th>
                       <th className="px-3 py-2.5 font-medium">Last handover</th>
-                      <th className="px-3 py-2.5 text-right font-medium">Cash short (SAR)</th>
                       <th className="px-3 py-2.5 text-right font-medium">Open advances (SAR)</th>
                       <th className="px-5 py-2.5 text-right font-medium"><span className="sr-only">Actions</span></th>
                     </tr>
@@ -192,7 +187,6 @@ export default function Drivers() {
                         <td className="px-3 py-3 text-ink-soft">{d.hub || "-"}</td>
                         <td className="num px-3 py-3 text-ink-soft">{d.pos_terminal || <span className="text-ink-faint">Not set</span>}</td>
                         <td className="px-3 py-3 text-ink-soft">{d.last_collection ? fmtDay(d.last_collection) : "None yet"}</td>
-                        <td className="px-3 py-3 text-right">{d.cash_shortage > 0 ? <Money value={d.cash_shortage} tone="short" className="font-medium" /> : <span className="text-ink-faint">-</span>}</td>
                         <td className="px-3 py-3 text-right">
                           {d.open_advances > 0
                             ? <span title={`${d.open_advance_count} open`}><Money value={d.open_advances} tone="brass" className="font-medium" /></span>

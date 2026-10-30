@@ -100,17 +100,16 @@ export default function Dashboard() {
               <dd className="mt-1 text-[22px] font-semibold"><Money value={f.cash_received} /></dd>
               <dd className="mt-1 text-xs text-ink-faint">cash, plus <span className="num">{fmtMoney(f.pos_terminal)}</span> POS</dd>
             </div>
-            <Link to="/collections" className="group p-5 hover:bg-paper/50">
-              <dt className="text-sm text-ink-soft">Cash differences</dt>
-              <dd className={`mt-1 text-[22px] font-semibold ${f.short_count ? "text-short" : "text-leaf-dark"}`}>
-                {f.short_count ? <Money value={-f.cash_short} tone="short" /> : f.drivers ? "None" : "-"}</dd>
-              <dd className="mt-1 text-xs text-ink-faint">{f.short_count ? `${f.short_count} short` : "No driver short"}{f.over_count ? `, ${f.over_count} over` : ""}</dd>
+            <Link to="/deposits" className="group p-5 hover:bg-paper/50">
+              <dt className="text-sm text-ink-soft">In the bank</dt>
+              <dd className={`mt-1 text-[22px] font-semibold ${f.deposited ? "text-leaf-dark" : ""}`}>{f.deposited ? <Money value={f.deposited} tone="leaf" /> : <span className="text-ink-faint">—</span>}</dd>
+              <dd className="mt-1 text-xs text-ink-faint">{f.to_deposit ? <>{f.deposit_status_text} · <span className="num">{fmtMoney(f.total_due ?? f.to_deposit)}</span> to deposit</> : "Nothing to deposit"}</dd>
             </Link>
             <Link to="/pos" className="group p-5 hover:bg-paper/50">
-              <dt className="text-sm text-ink-soft">POS differences</dt>
-              <dd className={`mt-1 text-[22px] font-semibold ${f.pos_open ? "text-short" : f.pos_awaiting && !f.pos_differences ? "text-brass-dark" : "text-leaf-dark"}`}>
-                {f.pos_differences ? <Money value={f.pos_difference} tone={f.pos_open ? "short" : "muted"} /> : f.pos_awaiting ? "Waiting" : f.drivers ? "None" : "-"}</dd>
-              <dd className="mt-1 text-xs text-ink-faint">{f.pos_differences ? `${f.pos_open} of ${f.pos_differences} not yet explained` : f.pos_awaiting ? "Import the system’s POS orders" : "Every terminal agrees"}</dd>
+              <dt className="text-sm text-ink-soft">Card sheet against the system</dt>
+              <dd className={`mt-1 text-[22px] font-semibold ${Math.abs(f.pos_difference) >= 0.01 ? "text-short" : f.pos_awaiting ? "text-brass-dark" : "text-leaf-dark"}`}>
+                {Math.abs(f.pos_difference) >= 0.01 ? <Money value={f.pos_difference} tone="short" /> : f.pos_awaiting ? "Waiting" : f.drivers ? "Agrees" : "-"}</dd>
+              <dd className="mt-1 text-xs text-ink-faint">{Math.abs(f.pos_difference) >= 0.01 ? `The sheet is ${f.pos_difference < 0 ? "below" : "above"} the system` : f.pos_awaiting ? "Import the system’s card payments" : "Card machine sheet matches the system"}</dd>
             </Link>
           </dl>
 
@@ -123,25 +122,7 @@ export default function Dashboard() {
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
             <div className="min-w-0 space-y-6">
               <Trend data={data.trend} day={day} onPick={setDay} />
-              <Panel flush title={`Drivers with a difference on ${fmtDay(day)}`}>
-                {data.attention.length === 0 ? (
-                  <p className="px-5 py-6 text-sm text-ink-soft">{f.drivers ? "Every driver's cash and POS agree on this day." : "No handovers recorded on this day yet."}</p>
-                ) : (
-                  <ul className="divide-y divide-paper-line">
-                    {data.attention.map((a) => (
-                      <li key={a.driver_code} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
-                        <span className="min-w-[12rem] flex-1"><span className="num mr-2 font-semibold text-ink-soft">{a.driver_code}</span><span className="font-medium">{a.driver_name}</span></span>
-                        {a.issues.map((i) => (
-                          <Link key={i.kind} to={i.page} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-paper">
-                            <Badge tone={i.kind.endsWith("over") ? "brass" : i.explained ? "muted" : "short"}>{ISSUE_TEXT[i.kind]}{i.explained ? ", explained" : ""}</Badge>
-                            <Money value={i.amount} tone={i.amount < 0 ? "short" : "brass"} className="font-semibold" />
-                          </Link>
-                        ))}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Panel>
+
             </div>
 
             <Panel flush title="Needs attention" className="self-start"

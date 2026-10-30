@@ -31,7 +31,7 @@ def test_dashboard_for_a_day_matches_the_other_pages(client):
 def test_dashboard_alerts_cover_every_kind_of_open_item(client):
     dash = client.get("/api/dashboard", params={"date": END.isoformat()}).json()
     kinds = dash["alert_kinds"]
-    assert kinds["deposit_short"] >= 1 and kinds["pos_open"] >= 1
+    assert kinds["deposit_short"] >= 1 and kinds["pos_sheet"] >= 1
     assert sum(kinds.values()) == dash["alert_count"] and len(dash["alerts"]) == min(12, dash["alert_count"])
     dates = [a["date"] for a in dash["alerts"]]
     assert dates == sorted(dates, reverse=True)  # newest first

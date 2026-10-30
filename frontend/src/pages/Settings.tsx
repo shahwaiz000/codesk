@@ -221,7 +221,6 @@ export default function Settings() {
       <PageHeader title="Settings" subtitle={loginEnabled && username ? `Logged in as ${username}.` : "Login is turned off on this server."} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <div className="space-y-6 self-start">
-          <Panel title="How your cash desk works"><CashMode /></Panel>
           {loginEnabled && <Panel title="Password"><PasswordForm /></Panel>}
         </div>
         <div className="min-w-0 space-y-6">

@@ -15,7 +15,6 @@ export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "Records", items: [
     { to: "/reports", label: "Reports", icon: "report" },
     { to: "/ask", label: "Ask CODesk", icon: "spark" },
-    { to: "/drivers", label: "Drivers", icon: "drivers" },
     { to: "/stations", label: "Stations", icon: "pin" },
   ] },
 ];
@@ -23,7 +22,8 @@ export const NAV: { title: string; items: NavItem[] }[] = [
 /** Which station the desk looks at: one warehouse, or all of them together. */
 export function StationPicker() {
   const { station, stations, choose } = useStation();
-  const active = stations.filter((s) => s.active || s.id === station?.id);
+  // only the stations in use (with drivers); the Stations page has them all
+  const active = stations.filter((s) => (s.active && s.drivers > 0) || s.id === station?.id);
   return (
     <label className="group relative mx-3 mb-6 block rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-brass-glow/40 hover:bg-white/[0.07]">
       <span className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-ledger-300/80">

@@ -10,6 +10,7 @@ import { byRegion, useStation } from "../stations";
 import type { Dashboard } from "../types";
 import Collections from "./Collections";
 import Expenses from "./Expenses";
+import Drivers from "./Drivers";
 import PosCheck from "./PosCheck";
 
 export const TABS: { key: string; label: string; icon: IconName }[] = [
@@ -17,6 +18,7 @@ export const TABS: { key: string; label: string; icon: IconName }[] = [
   { key: "pos", label: "Card (POS)", icon: "card" },
   { key: "expenses", label: "Expenses", icon: "receipt" },
   { key: "deposit", label: "Deposit", icon: "bank" },
+  { key: "drivers", label: "Drivers", icon: "drivers" },
 ];
 
 /** Without a station chosen: pick the station to check. */
@@ -114,6 +116,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
         {tab === "pos" && <PosCheck embedded />}
         {tab === "expenses" && <Expenses embedded />}
         {tab === "deposit" && <DayDeposit day={day} />}
+        {tab === "drivers" && <Drivers embedded />}
       </div>
     </>
   );

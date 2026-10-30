@@ -13,7 +13,7 @@ from .collections import day_totals
 from .database import get_db
 from .deposits import ledger, by_day
 from .deps import parse_day
-from .models import Collection, Driver, Expense, ImportedFile, PosOrder, TerminalTotal
+from .models import Station, Collection, Driver, Expense, ImportedFile, PosOrder, TerminalTotal
 from .money import to_sar
 from .seed import business_days
 
@@ -126,17 +126,23 @@ def dashboard(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     pos_days = [d for (d,) in db.query(PosOrder.business_date).filter(PosOrder.business_date >= since).distinct()]
     pos_days += [d for (d,) in db.query(Collection.business_date).filter(Collection.business_date >= since,
                                                                           Collection.pos_amount > 0).distinct()]
-    unpaired = (db.query(TerminalTotal.business_date, func.count(TerminalTotal.id), func.sum(TerminalTotal.amount))
-                .filter(TerminalTotal.business_date >= since, TerminalTotal.driver_id.is_(None)).group_by(TerminalTotal.business_date))
-    for d, n, total in unpaired:
-        alerts.append({"kind": "pos_unpaired", "date": d.isoformat(), "amount": to_sar(int(total)), "page": "/pos",
-                       "text": f"{n} POS machine{'s' if n != 1 else ''} not matched to a driver"})
     pos_days += [d for (d,) in db.query(TerminalTotal.business_date).filter(TerminalTotal.business_date >= since).distinct()]
+    # the supervisor checks each station's card machine sheet against the system's card payments, as day totals
+    from .scope import current_station
+    looking = current_station.get()
     for d in sorted(set(pos_days), reverse=True):
-        for r in pos.day_rows(db, d):
-            if r["open"]:
-                alerts.append({"kind": "pos_open", "date": d.isoformat(), "amount": r["difference"], "page": "/pos",
-                               "text": f"POS {r['status_text'].lower()} for {r['driver_code']} not yet explained"})
+        ids = [looking] if looking is not None else sorted(
+            {s for (s,) in db.query(Collection.station_id).filter(Collection.business_date == d).distinct()} - {None}) or [None]
+        for sid in ids:
+            token = current_station.set(sid)
+            try:
+                _, p = pos.day_summary(db, d)
+            finally:
+                current_station.reset(token)
+            if p["system_total"] and p["machines_total"] and abs(p["difference"]) >= 0.01:
+                name = db.get(Station, sid).name if sid and looking is None else ""
+                alerts.append({"kind": "pos_sheet", "date": d.isoformat(), "amount": p["difference"], "page": "/pos",
+                               "text": "Card machine sheet differs from the system" + (f" ({name})" if name else "")})
     for e in (db.query(Expense).filter(Expense.category == "advance", Expense.settled_on.is_(None),
                                        Expense.business_date <= today - timedelta(days=OLD_ADVANCE_DAYS))
               .order_by(Expense.business_date)):

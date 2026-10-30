@@ -31,7 +31,7 @@ function mock() {
   });
 }
 
-test("the dashboard shows the cash flow, drivers with differences and open items", async () => {
+test("the dashboard shows the cash flow and open items, not driver differences", async () => {
   mock();
   render(<MemoryRouter><BusinessDayProvider><Dashboard /></BusinessDayProvider></MemoryRouter>);
   const flow = await screen.findByRole("region", { name: "Cash from driver to bank" });
@@ -39,7 +39,7 @@ test("the dashboard shows the cash flow, drivers with differences and open items
   expect(within(flow).getByText("721.50")).toBeInTheDocument();
   expect(within(flow).getByText("Deposit short")).toBeInTheDocument();
   expect(screen.getByText("+7.6%")).toBeInTheDocument(); // 64,542.50 against 60,000
-  expect(screen.getByText("Yousef Al-Amri")).toBeInTheDocument();
+  expect(screen.queryByText("Yousef Al-Amri")).not.toBeInTheDocument(); // driver cash differences are not the supervisor's view
   expect(screen.getByText("Bank deposit short")).toBeInTheDocument();
 });
 

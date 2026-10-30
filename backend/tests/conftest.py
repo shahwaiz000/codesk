@@ -24,4 +24,7 @@ def client():
     with TestClient(app) as c:
         with SessionLocal() as db:
             seed_demo(db, end=END)
+            from app.models import AppSetting  # the tests check the desk's counted cash too (paid in full is the default)
+            db.add(AppSetting(key="cash_mode", value="count"))
+            db.commit()
         yield c

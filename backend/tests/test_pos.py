@@ -157,7 +157,7 @@ def test_machines_without_owner_are_paired_by_exact_amount(client):
     near = free["64800003"]["suggestions"][0]
     assert near["driver_code"] == "D-106" and near["difference"] == 15.0
     alerts = client.get("/api/dashboard", params={"date": d}).json()["alerts"]
-    assert any(a["kind"] == "pos_unpaired" and a["date"] == d for a in alerts)
+    assert any(a["kind"] == "pos_sheet" and a["date"] == d for a in alerts)  # the day's sheet is not equal to the system yet
 
     # the person pairs the rest by hand
     client.put(f"/api/pos/machines/{free['64800003']['id']}", json={"driver_id": did(client, "D-106")})

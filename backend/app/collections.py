@@ -28,7 +28,7 @@ CASH_MODES = ("count", "paid")  # count: the desk counts each driver's cash; pai
 
 def cash_mode(db: Session) -> str:
     s = db.get(AppSetting, "cash_mode")
-    return s.value if s and s.value in CASH_MODES else "count"
+    return s.value if s and s.value in CASH_MODES else "paid"  # orders are closed only when paid in full
 
 
 def status_of(diff: int) -> str:
