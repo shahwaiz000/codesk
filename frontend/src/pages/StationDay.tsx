@@ -24,11 +24,11 @@ export const TABS: { key: string; label: string; icon: IconName }[] = [
 /** Without a station chosen: pick the station to check. */
 function ChooseStation() {
   const { stations, choose } = useStation();
-  const staffed = stations.filter((s) => s.active && s.drivers > 0);
+  const staffed = stations.filter((s) => s.active);
   return (
     <>
       <PageHeader title="Station day" subtitle="Choose the station to check. You can also choose it at the top of the menu." />
-      {staffed.length === 0 ? <p className="text-sm text-ink-soft">No station has drivers yet. Import your drivers first.</p> : (
+      {staffed.length === 0 ? <p className="text-sm text-ink-soft">No station yet. Add one on the Stations page.</p> : (
         <div className="space-y-5">
           {byRegion(staffed).map(([region, list]) => (
             <section key={region}>
@@ -39,7 +39,7 @@ function ChooseStation() {
                     className="flex items-center gap-3 rounded-panel bg-white p-4 text-left shadow-panel transition hover:shadow-pop">
                     <span className="num grid h-10 w-12 shrink-0 place-items-center rounded-lg bg-ledger-900 text-xs font-bold text-brass-glow">{s.code.slice(0, 7)}</span>
                     <span className="min-w-0"><span className="block truncate font-semibold">{s.name}</span>
-                      <span className="text-xs text-ink-faint">{s.drivers} drivers</span></span>
+                      <span className="text-xs text-ink-faint">{s.drivers ? `${s.drivers} drivers` : "no drivers yet"}</span></span>
                   </button>
                 ))}
               </div>
