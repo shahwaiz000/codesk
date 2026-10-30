@@ -17,7 +17,7 @@ from .config import settings
 from .database import Base, SessionLocal, add_missing_columns, engine, get_db
 from .models import AppSetting, AuditEvent, Collection, Deposit, Driver, Expense, User, iso, Station
 from .money import to_sar
-from .seed import seed_demo, seed_more_stations
+from .seed import match_paid_mode, seed_demo, seed_more_stations
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
         with SessionLocal() as db:
             seed_demo(db)
             seed_more_stations(db)
+            match_paid_mode(db)
     with SessionLocal() as db:
         stations.assign_missing(db)
     stop = watcher.start()

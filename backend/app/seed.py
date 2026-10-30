@@ -214,3 +214,23 @@ def seed_demo(db: Session, end: date | None = None) -> None:
             db.add(Deposit(business_date=day, deposit_date=when, bank=bank, slip_ref=f"DS-{rng.randint(100000, 999999)}",
                            amount=part, created_by="demo", station_id=home.id))
     db.commit()
+
+
+def match_paid_mode(db) -> int:
+    """The demo works like the desk it is made for: an order is closed only when the driver pays it in
+    full, so a driver is never short or over. A demo database without a choice yet is set to that mode,
+    and in that mode the demo's planted driver differences are taken out (the system's cash is what was
+    received). Returns how many handovers were changed."""
+    from .models import AppSetting, Collection
+    mode = db.get(AppSetting, "cash_mode")
+    if mode is None:
+        mode = AppSetting(key="cash_mode", value="paid")
+        db.add(mode)
+    if mode.value != "paid":
+        db.commit()
+        return 0
+    rows = db.query(Collection).execution_options(all_stations=True).filter(Collection.cash_received != Collection.expected_cash).all()
+    for c in rows:
+        c.expected_cash = c.cash_received
+    db.commit()
+    return len(rows)

@@ -192,3 +192,25 @@ def test_a_desk_that_closes_orders_only_when_paid(client):
         assert any("closed only when paid in full" in a["summary"] for a in client.get("/api/audit").json())
     finally:
         client.put("/api/settings", json={"cash_mode": "count"})
+
+
+def test_the_demo_follows_paid_in_full_mode(client):
+    """Started in demo mode, a database without a choice is set to paid-in-full and has no driver differences.
+    (Run on a separate database, so the shared test data keeps its planted differences.)"""
+    import tempfile
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.database import Base
+    from app.models import AppSetting, Collection
+    from app.seed import match_paid_mode, seed_demo
+    from datetime import date as _d
+    from app import stations
+    eng = create_engine(f"sqlite:///{tempfile.mkdtemp()}/p.db")
+    Base.metadata.create_all(eng)
+    with sessionmaker(eng)() as db:
+        stations.ensure_defaults(db)
+        seed_demo(db, end=_d(2026, 10, 26))
+        assert db.query(Collection).filter(Collection.cash_received != Collection.expected_cash).count() > 0
+        assert match_paid_mode(db) > 0
+        assert db.get(AppSetting, "cash_mode").value == "paid"
+        assert db.query(Collection).filter(Collection.cash_received != Collection.expected_cash).count() == 0
