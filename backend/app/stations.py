@@ -120,6 +120,9 @@ def assign_missing(db: Session) -> int:
     for dep in db.query(Deposit).execution_options(all_stations=True).filter(Deposit.station_id.is_(None)):
         found = {s for (s,) in db.query(Collection.station_id).execution_options(all_stations=True)
                  .filter(Collection.business_date == dep.business_date).distinct()}
+        if len(found) > 1:  # several stations had cash that day: the slip is the one station's without a slip of its own
+            found -= {s for (s,) in db.query(Deposit.station_id).execution_options(all_stations=True)
+                      .filter(Deposit.business_date == dep.business_date, Deposit.station_id.isnot(None)).distinct()}
         if len(found) == 1 and None not in found:
             dep.station_id = found.pop()
             changed += 1

@@ -2,6 +2,11 @@
 from app.database import SessionLocal
 from app.models import Station
 from app.stations import KSA
+from datetime import date as _date
+
+
+def date_(s):
+    return _date.fromisoformat(s)
 
 DAY = "2026-05-20"
 
@@ -138,3 +143,18 @@ def test_drivers_without_a_station_can_be_put_in_one(client):
         for c in db.query(Collection).execution_options(all_stations=True).filter_by(driver_id=d.id):
             c.station_id = d.station_id
         db.commit()
+
+
+def test_an_old_slip_goes_to_the_one_station_without_a_slip_that_day(client):
+    from app import stations
+    from app.models import Deposit
+    with SessionLocal() as db:
+        dmm = db.query(Station).filter_by(code="DMM").one().id
+        dep = db.query(Deposit).execution_options(all_stations=True).filter(Deposit.business_date == date_(DAY), Deposit.station_id == dmm).one()
+        other = db.query(Station).filter_by(code="NEW9").one().id
+        db.add(Deposit(business_date=dep.business_date, deposit_date=dep.deposit_date, bank="Coastal National Bank",
+                       slip_ref="ST-SLIP-OTHER", amount=7000, station_id=other, created_by="test"))
+        dep.station_id = None  # a slip saved before stations existed, on a day two stations had cash
+        db.commit()
+        stations.assign_missing(db)
+        assert db.get(Deposit, dep.id).station_id == dmm  # the other station already has its own slip

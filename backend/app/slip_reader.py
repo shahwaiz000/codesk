@@ -412,7 +412,7 @@ def demo_slip(db: Session = Depends(get_db)):
         if count:
             lines.append((note, count))
             left -= note * count
-    day = next(r for r in deposits.ledger(db) if r["date"] == row["date"])["due_on"]
+    day = min(next(r for r in deposits.ledger(db) if r["date"] == row["date"])["due_on"], date.today().isoformat())  # never in the future
     img = Image.new("RGB", (1100, 1450), "#fdfdfb")
     d = ImageDraw.Draw(img)
 
