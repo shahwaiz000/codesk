@@ -13,13 +13,17 @@ function StationForm({ station, onClose, onSaved }: { station: Station | null; o
   const [name, setName] = useState(station?.name ?? "");
   const [city, setCity] = useState(station?.city ?? "");
   const [region, setRegion] = useState(station?.region ?? "");
+  const [cashier, setCashier] = useState(station?.cashier_name ?? "");
+  const [phone, setPhone] = useState(station?.cashier_phone ?? "");
+  const [email, setEmail] = useState(station?.cashier_email ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null);
-    const body = { code, name, city, region, active: station?.active ?? true };
+    const body = { code, name, city, region, active: station?.active ?? true, cashier_name: cashier, cashier_phone: phone,
+      cashier_email: email, cash_limit: station?.cash_limit ?? 0 };
     try {
       if (station) await send(`/stations/${station.id}`, "PUT", body);
       else await send("/stations", "POST", body);
@@ -42,6 +46,17 @@ function StationForm({ station, onClose, onSaved }: { station: Station | null; o
             <input className="field" list="region-list" value={region} maxLength={60} onChange={(e) => setRegion(e.target.value)} />
             <datalist id="region-list">{REGIONS.map((r) => <option key={r} value={r} />)}</datalist></label>
         </div>
+        <fieldset className="space-y-3 rounded-lg bg-paper p-3">
+          <legend className="px-1 text-xs font-semibold text-ink-soft">The station's cashier</legend>
+          <label className="block text-sm font-medium">Name
+            <input className="field" value={cashier} maxLength={80} onChange={(e) => setCashier(e.target.value)} placeholder="Who sends you this station's files" /></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm font-medium">Mobile (WhatsApp)
+              <input className="field num" inputMode="tel" value={phone} maxLength={30} onChange={(e) => setPhone(e.target.value)} placeholder="05XXXXXXXX" /></label>
+            <label className="block text-sm font-medium">E-mail
+              <input className="field" type="email" value={email} maxLength={120} onChange={(e) => setEmail(e.target.value)} /></label>
+          </div>
+        </fieldset>
         <p className="text-xs text-ink-faint">Use the same code or name as the Site column of your system's reports, so imports find this station by themselves.</p>
         <FormError message={error} />
         <div className="flex justify-end gap-2">
@@ -156,7 +171,8 @@ export default function Stations() {
                         </div>
                         <div className="relative mt-4 flex items-center justify-between gap-2">
                           <span className="flex items-center gap-1.5 text-sm text-ink-soft"><Icon name="drivers" className="h-4 w-4" />
-                            <span className="num font-medium text-ink">{s.drivers}</span> {s.drivers === 1 ? "driver" : "drivers"}</span>
+                            <span className="num font-medium text-ink">{s.drivers}</span> {s.drivers === 1 ? "driver" : "drivers"}
+                            {s.cashier_name && <span className="ml-1 truncate text-xs text-ink-faint">· {s.cashier_name}</span>}</span>
                           {!s.active ? <Badge tone="muted">Switched off</Badge> : here ? <Badge tone="brass">Looking at it</Badge> : null}
                         </div>
                         <div className="relative mt-3 flex gap-1 border-t border-paper-line pt-3">

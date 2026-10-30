@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FollowDraft, RaiseDialog } from "./FollowUps";
 import { fmtDay, useApi } from "../lib";
 import { useStation } from "../stations";
 import type { StationDay, StationOverview } from "../types";
@@ -25,6 +27,9 @@ export default function CallList({ day }: { day: string }) {
   const { data } = useApi<StationOverview>(`/stations/overview?date=${day}`);
   const { choose } = useStation();
   const go = useNavigate();
+  const [raising, setRaising] = useState<FollowDraft | null>(null);
+  const draftFor = (s: StationDay, p: StationDay["problems"][number]): FollowDraft => ({
+    station_id: s.id, kind: p.kind ?? "other", title: p.text.replace(/\s*\(.*\)$/, ""), amount: p.amount ?? 0, date: p.date ?? day });
   const rows: StationDay[] = Array.isArray(data?.stations) ? data!.stations : [];
   if (!data) return null;
   const count = (l: string) => rows.filter((r) => r.level === l).length;
@@ -44,6 +49,9 @@ export default function CallList({ day }: { day: string }) {
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${LEVEL[s.level].chip}`}>{LEVEL[s.level].text}</span>
                   <span className="truncate font-semibold">{s.name}</span>
                 </span>
+                {s.check
+                  ? <span className="mt-1 inline-flex items-center gap-1 text-xs text-leaf-dark"><Icon name="check" className="h-3 w-3" />Checked by {s.check.checked_by}</span>
+                  : <span className="mt-1 block text-xs text-ink-faint">Not checked yet</span>}
                 <span className="mt-0.5 block text-xs text-ink-faint">{s.code} · {s.handed_over}/{s.drivers} drivers · cash <Money value={s.cash_received} /></span>
               </span>
               <span className="min-w-0 space-y-1.5">
@@ -57,7 +65,10 @@ export default function CallList({ day }: { day: string }) {
                 </span>
                 {s.problems.length > 0 && (
                   <span className="block text-sm">
-                    {s.problems.map((p, i) => <span key={i} className={`mr-3 inline-block ${p.level === "call" ? "text-short" : "text-brass-dark"}`}>{p.text}</span>)}
+                    {s.problems.map((p, i) => (
+                      <span key={i} className={`mr-3 inline-block ${p.level === "call" ? "text-short" : "text-brass-dark"}`}>{p.text}
+                        <button onClick={() => setRaising(draftFor(s, p))} className="ml-1.5 rounded px-1 text-xs font-medium text-ink-soft underline underline-offset-2 hover:text-ink">raise follow-up</button>
+                      </span>))}
                   </span>
                 )}
               </span>
@@ -69,6 +80,7 @@ export default function CallList({ day }: { day: string }) {
           ))}
         </ul>
       )}
+      {raising && <RaiseDialog draft={raising} onClose={() => setRaising(null)} onSaved={() => setRaising(null)} />}
     </Panel>
   );
 }

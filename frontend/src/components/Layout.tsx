@@ -10,6 +10,8 @@ export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "Daily desk", items: [
     { to: "/", label: "Overview", icon: "dashboard" },
     { to: "/station", label: "Station day", icon: "warehouse" },
+    { to: "/follow-ups", label: "Follow-ups", icon: "alert" },
+    { to: "/cashiers", label: "Cashiers", icon: "drivers" },
     { to: "/deposits", label: "Deposit history", icon: "bank" },
   ] },
   { title: "Records", items: [

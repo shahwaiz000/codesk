@@ -131,7 +131,10 @@ def assign_missing(db: Session) -> int:
 
 
 def station_dict(s: Station, drivers: int = 0) -> dict:
-    return {"id": s.id, "code": s.code, "name": s.name, "city": s.city, "region": s.region, "active": s.active, "drivers": drivers}
+    from .money import to_sar
+    return {"id": s.id, "code": s.code, "name": s.name, "city": s.city, "region": s.region, "active": s.active, "drivers": drivers,
+            "cashier_name": s.cashier_name or "", "cashier_phone": s.cashier_phone or "", "cashier_email": s.cashier_email or "",
+            "cash_limit": to_sar(s.cash_limit or 0)}
 
 
 @router.get("")
@@ -147,6 +150,17 @@ class StationIn(BaseModel):
     city: str = Field("", max_length=60)
     region: str = Field("", max_length=60)
     active: bool = True
+    cashier_name: str = Field("", max_length=80)
+    cashier_phone: str = Field("", max_length=30)
+    cashier_email: str = Field("", max_length=120)
+    cash_limit: float = Field(0, ge=0, le=10_000_000)
+
+
+def _cashier(s: Station, body: "StationIn"):
+    s.cashier_name = " ".join(body.cashier_name.split())
+    s.cashier_phone = "".join(body.cashier_phone.split())
+    s.cashier_email = body.cashier_email.strip()
+    s.cash_limit = round(body.cash_limit * 100)
 
 
 @router.post("", status_code=201)
@@ -155,6 +169,7 @@ def add(body: StationIn, db: Session = Depends(get_db), user: str = Depends(curr
     if db.query(Station).filter(func.upper(Station.code) == code).first():
         raise HTTPException(409, f"Station {code} already exists")
     s = Station(code=code, name=" ".join(body.name.split()), city=body.city.strip(), region=body.region.strip(), active=body.active)
+    _cashier(s, body)
     db.add(s)
     db.flush()
     audit.record(db, user, "created", "station", s.id, f"Station {s.code} {s.name}")
@@ -172,6 +187,7 @@ def update(sid: int, body: StationIn, db: Session = Depends(get_db), user: str =
         raise HTTPException(409, f"Station {code} already exists")
     before = f"{s.code} {s.name} {s.city} ({'active' if s.active else 'off'})"
     s.code, s.name, s.city, s.region, s.active = code, " ".join(body.name.split()), body.city.strip(), body.region.strip(), body.active
+    _cashier(s, body)
     audit.record(db, user, "updated", "station", s.id, f"Station {before} -> {s.code} {s.name} {s.city} ({'active' if s.active else 'off'})")
     db.commit()
     return station_dict(s)
@@ -209,19 +225,24 @@ def _check_day(db: Session, sid: int, day: date, f: dict, row: dict | None, late
     files = {"report": report > 0, "pos_orders": orders > 0, "terminal_sheet": machines > 0, "expenses": expenses, "slip": slip}
     problems: list[dict] = []
     if not report:
-        problems.append({"level": "call", "text": "No collection report for this day"})
+        problems.append({"level": "call", "kind": "missing_file", "text": "No collection report for this day"})
     elif not orders:
-        problems.append({"level": "check", "text": "The system's POS orders file is missing"})
+        problems.append({"level": "check", "kind": "missing_file", "text": "The system's POS orders file is missing"})
     elif not machines:
-        problems.append({"level": "check", "text": "The card machine sheet is missing"})
+        problems.append({"level": "check", "kind": "missing_file", "text": "The card machine sheet is missing"})
     if orders and machines and abs(f["pos_difference"]) >= 0.01:  # the cashier's card machine sheet against the system's card payments
-        problems.append({"level": "check", "text": f"Card machine sheet differs from the system by {f['pos_difference']:,.2f}"})
+        problems.append({"level": "check", "kind": "card_sheet", "amount": abs(f["pos_difference"]), "date": day.isoformat(),
+                         "text": f"Card machine sheet differs from the system by {f['pos_difference']:,.2f}"})
     if late:
         amount = sum(r["pending"] for r in late)
         days = ", ".join(f"{date.fromisoformat(r['date']):%a %d %b}" for r in sorted(late, key=lambda r: r["date"])[:3])
-        problems.append({"level": "call", "text": f"Cash not in the bank: {amount:,.2f} SAR ({days}{'…' if len(late) > 3 else ''})"})
+        first = sorted(late, key=lambda r: r["date"])[0]
+        problems.append({"level": "call", "kind": "deposit_short" if first["status"] == "short" else "deposit_late",
+                         "amount": round(amount, 2), "date": first["date"],
+                         "text": f"Cash not in the bank: {amount:,.2f} SAR ({days}{'…' if len(late) > 3 else ''})"})
     if row and row["status"] == "due_today":
-        problems.append({"level": "check", "text": f"Deposit of {row['pending']:,.2f} due today"})
+        problems.append({"level": "check", "kind": "deposit_late", "amount": row["pending"], "date": day.isoformat(),
+                         "text": f"Deposit of {row['pending']:,.2f} due today"})
     level = "call" if any(p["level"] == "call" for p in problems) else "check" if problems else "ok"
     return files, problems, level
 
@@ -241,6 +262,8 @@ def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     finally:
         current_station.reset(token)
     counts = dict(db.query(Driver.station_id, func.count(Driver.id)).filter(Driver.active.is_(True)).group_by(Driver.station_id))
+    from .supervisor import checks_for
+    checked = checks_for(db, day)
     out = []
     for st in db.query(Station).filter(Station.id.in_([b for b in busy if b])).order_by(Station.name):
         token = current_station.set(st.id)
@@ -257,7 +280,8 @@ def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
                                          "paid_out", "to_deposit", "deposited", "pending", "deposit_status", "deposit_status_text")},
                     "cash_on_hand": round(sum(r["pending"] for r in mine if r["pending"] > 0), 2),
                     "late_days": len(late), "late_amount": round(sum(r["pending"] for r in late), 2),
-                    "late_dates": sorted(r["date"] for r in late), "files": files, "problems": problems, "level": level})
+                    "late_dates": sorted(r["date"] for r in late), "files": files, "problems": problems, "level": level,
+                    "check": checked.get(st.id)})
     out.sort(key=lambda x: ({"call": 0, "check": 1, "ok": 2}[x["level"]], -x["late_amount"], x["name"]))
     add = lambda k: round(sum(x[k] for x in out), 2)  # noqa: E731
     return {"date": day.isoformat(), "stations": out, "active_stations": db.query(Station).filter(Station.active.is_(True)).count(),

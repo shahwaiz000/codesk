@@ -138,6 +138,21 @@ function MorningSummary() {
   );
 }
 
+/** The month-end report for the station being looked at, or for all stations. */
+function MonthEnd() {
+  const thisMonth = todayIso().slice(0, 7);
+  const [month, setMonth] = useState(thisMonth);
+  return (
+    <Panel title="Month-end report">
+      <p className="-mt-2 mb-4 text-sm text-ink-soft">For your manager: the month's money, each cashier's score (on time, short, late, card sheet), the days you checked, and every follow-up raised. For the station chosen at the top, or all stations.</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <input type="month" className="field mt-0 w-auto" value={month} max={thisMonth} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+        <a href={withStation(`/api/supervisor/month-report?month=${month}`)} className="btn-primary"><Icon name="download" className="h-4 w-4" />Month-end PDF</a>
+      </div>
+    </Panel>
+  );
+}
+
 export default function Reports() {
   const { day } = useBusinessDay();
   const today = todayIso();
@@ -157,6 +172,7 @@ export default function Reports() {
       <PageHeader title="Reports" subtitle="Download the finance report for one business day or for a period. Excel has a sheet per area with working totals; the PDF is ready to print and sign." />
       <div className="grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">
         <MorningSummary />
+        <MonthEnd />
         <Panel title="Daily finance report">
           <p className="-mt-2 mb-4 text-sm text-ink-soft">One page: key figures, every driver's cash handover, POS differences with their reviews, expenses, deposit slips, open items and sign-off lines.</p>
           <DayPicker />

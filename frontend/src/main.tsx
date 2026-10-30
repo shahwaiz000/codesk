@@ -12,6 +12,8 @@ import Drivers from "./pages/Drivers";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import StationDay from "./pages/StationDay";
+import Cashiers from "./pages/Cashiers";
+import FollowUpsPage from "./pages/FollowUpsPage";
 import Stations from "./pages/Stations";
 import { StationProvider } from "./stations";
 
@@ -25,6 +27,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="station" element={<StationDay />} />
+            <Route path="follow-ups" element={<FollowUpsPage />} />
+            <Route path="cashiers" element={<Cashiers />} />
             <Route path="collections" element={<StationDay tab="collection" />} />
             <Route path="pos" element={<StationDay tab="pos" />} />
             <Route path="expenses" element={<StationDay tab="expenses" />} />

@@ -11,6 +11,8 @@ import type { Dashboard } from "../types";
 import Collections from "./Collections";
 import Expenses from "./Expenses";
 import Drivers from "./Drivers";
+import FollowUps from "../components/FollowUps";
+import DayCheck from "../components/DayCheck";
 import PosCheck from "./PosCheck";
 
 export const TABS: { key: string; label: string; icon: IconName }[] = [
@@ -18,6 +20,7 @@ export const TABS: { key: string; label: string; icon: IconName }[] = [
   { key: "pos", label: "Card (POS)", icon: "card" },
   { key: "expenses", label: "Expenses", icon: "receipt" },
   { key: "deposit", label: "Deposit", icon: "bank" },
+  { key: "follow", label: "Follow-ups", icon: "alert" },
   { key: "drivers", label: "Drivers", icon: "drivers" },
 ];
 
@@ -83,7 +86,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
 
   return (
     <>
-      <PageHeader title={`${station.name} station`} subtitle={`${station.code}${station.region ? ` · ${station.region}` : ""} · everything the cashier did on one day.`} />
+      <PageHeader title={`${station.name} station`} subtitle={`${station.code}${station.region ? ` · ${station.region}` : ""}${station.cashier_name ? ` · cashier ${station.cashier_name}` : ""} · everything the cashier did on one day.`} />
       <DayPicker />
       {error ? <ErrorBox message={error} retry={reload} /> : (
         <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-3 lg:grid-cols-6 [&>div]:border-paper-line [&>div]:border-b lg:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
@@ -102,6 +105,8 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
         </dl>
       )}
 
+      <DayCheck day={day} stationId={station.id} />
+
       <div role="tablist" aria-label="Part of the day" className="mb-6 flex gap-1 overflow-x-auto rounded-xl bg-paper-deep p-1">
         {TABS.map((t) => (
           <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setParams({ tab: t.key }, { replace: true })}
@@ -116,6 +121,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
         {tab === "pos" && <PosCheck embedded />}
         {tab === "expenses" && <Expenses embedded />}
         {tab === "deposit" && <DayDeposit day={day} />}
+        {tab === "follow" && <FollowUps title={`Follow-ups with the cashier of ${station.name}`} />}
         {tab === "drivers" && <Drivers embedded />}
       </div>
     </>

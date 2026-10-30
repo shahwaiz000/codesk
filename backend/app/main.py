@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from . import audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, ai, ask, morning, scope, slip_reader, stations, unusual, watcher
+from . import supervisor, audit, auth, collections, dashboard, deposits, driver_import, expenses, expense_import, pos, reports, terminals, ai, ask, morning, scope, slip_reader, stations, unusual, watcher
 scope_module = scope  # the station filter (its events are registered on import)
 from .deps import current_user
 from .config import settings
@@ -60,6 +60,7 @@ app.include_router(morning.router)
 app.include_router(ai.router)
 app.include_router(ask.router)
 app.include_router(stations.router)
+app.include_router(supervisor.router)
 
 
 class StationScope:

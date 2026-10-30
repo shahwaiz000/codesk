@@ -108,14 +108,16 @@ export interface AiStatus {
   ready: boolean; reason: string;
 }
 
-export interface Station { id: number; code: string; name: string; city: string; region: string; active: boolean; drivers: number }
+export interface Station { id: number; code: string; name: string; city: string; region: string; active: boolean; drivers: number;
+  cashier_name?: string; cashier_phone?: string; cashier_email?: string; cash_limit?: number }
 export interface StationList { stations: Station[]; unassigned_drivers: number }
 export interface StationDay extends Station {
   handed_over: number; cash_received: number; pos_system: number; pos_terminal: number; pos_difference: number; pos_open: number;
   paid_out: number; to_deposit: number; deposited: number; pending: number; deposit_status: DepositStatus; deposit_status_text: string;
   cash_on_hand: number; late_days: number; late_amount: number; late_dates: string[];
   files: { report: boolean; pos_orders: boolean; terminal_sheet: boolean; expenses: number; slip: "sent" | "waiting" | "missing" | "none" };
-  problems: { level: "call" | "check"; text: string }[]; level: "call" | "check" | "ok";
+  problems: { level: "call" | "check"; text: string; kind?: string; amount?: number; date?: string }[]; level: "call" | "check" | "ok";
+  check?: { checked_by: string; checked_at: string; note: string } | null;
 }
 export interface StationOverview {
   date: string; stations: StationDay[]; active_stations: number;

@@ -46,6 +46,50 @@ class Station(Base):
     region: Mapped[str] = mapped_column(String(60), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # the station's cashier, whose work the supervisor checks
+    cashier_name: Mapped[str] = mapped_column(String(80), default="")
+    cashier_phone: Mapped[str] = mapped_column(String(30), default="")
+    cashier_email: Mapped[str] = mapped_column(String(120), default="")
+    cash_limit: Mapped[int] = mapped_column(Integer, default=0)  # halalas; 0 = no limit
+
+
+class DayCheck(Base):
+    """The supervisor has checked a station's day: who and when."""
+    __tablename__ = "day_checks"
+    __table_args__ = (UniqueConstraint("station_id", "business_date"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), index=True)
+    business_date: Mapped[date] = mapped_column(Date, index=True)
+    checked_by: Mapped[str] = mapped_column(String(60))
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    note: Mapped[str] = mapped_column(String(300), default="")
+
+
+class FollowUp(Base):
+    """Something the supervisor raised with a station's cashier, open until it is sorted out."""
+    __tablename__ = "follow_ups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"), index=True)
+    business_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    kind: Mapped[str] = mapped_column(String(30), default="other")  # deposit_short, deposit_late, card_sheet, missing_file, other
+    title: Mapped[str] = mapped_column(String(200))
+    amount: Mapped[int] = mapped_column(Integer, default=0)  # halalas
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open, closed
+    created_by: Mapped[str] = mapped_column(String(60))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    closed_by: Mapped[str] = mapped_column(String(60), default="")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    station: Mapped["Station"] = relationship()
+    notes: Mapped[list["FollowUpNote"]] = relationship(order_by="FollowUpNote.id", cascade="all, delete-orphan")
+
+
+class FollowUpNote(Base):
+    __tablename__ = "follow_up_notes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    follow_up_id: Mapped[int] = mapped_column(ForeignKey("follow_ups.id"), index=True)
+    text: Mapped[str] = mapped_column(String(600))
+    by: Mapped[str] = mapped_column(String(60))
+    at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Driver(Base):
