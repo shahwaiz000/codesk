@@ -105,11 +105,12 @@ def ledger(db: Session, today: date | None = None) -> list[dict]:
                 for old in sorted(k for k in owed if k[0] == st and k < key and owed[k] > 0):
                     if not amount:
                         break
-                    if rounded(owed[old], amount) or amount >= owed[old]:
-                        if amount < owed[old]:
-                            rounding[old] = amount - owed[old]
-                        use = min(amount, owed[old])
-                        owed[old], amount = 0, amount - use
+                    if rounded(owed[old], amount):  # the rest of the slip pays this day, rounded to whole notes
+                        rounding[old] = amount - owed[old]
+                        owed[old], amount = 0, 0
+                        paid_later[old] = (last, key[1])
+                    elif amount >= owed[old]:
+                        owed[old], amount = 0, amount - owed[old]
                         paid_later[old] = (last, key[1])
                     else:
                         owed[old] -= amount

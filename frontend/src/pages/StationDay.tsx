@@ -5,7 +5,7 @@ import DayDeposit from "../components/DayDeposit";
 import DayPicker from "../components/DayPicker";
 import { Icon, IconName } from "../components/icons";
 import { ErrorBox, Money, PageHeader } from "../components/ui";
-import { fmtDay, fmtMoney, useApi } from "../lib";
+import { CHANGED, fmtDay, fmtMoney, useApi } from "../lib";
 import { byRegion, useStation } from "../stations";
 import type { Dashboard } from "../types";
 import Collections from "./Collections";
@@ -67,6 +67,11 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
   const tab = TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : fixedTab ?? "collection";
   const { data, error, reload } = useApi<Dashboard>(station ? `/dashboard?date=${day}` : null);
   useEffect(() => { if (station) reload(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {  // the boxes on top follow anything saved in the tabs
+    const again = () => reload();
+    window.addEventListener(CHANGED, again);
+    return () => window.removeEventListener(CHANGED, again);
+  }, [reload]);
 
   if (!station) return <ChooseStation />;
   const f = data?.figures;

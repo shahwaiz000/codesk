@@ -29,8 +29,12 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Sent after anything is saved, so figures elsewhere on the screen can reload. */
+export const CHANGED = "codesk-changed";
+const changed = () => window.dispatchEvent(new Event(CHANGED));
+
 export const send = <T,>(path: string, method: string, body?: unknown) =>
-  api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+  api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }).then((r) => { changed(); return r; });
 
 export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
@@ -77,6 +81,7 @@ export async function upload<T>(path: string, form: FormData): Promise<T> {
   const body = await res.json().catch(() => null);
   if (res.status === 401) window.dispatchEvent(new Event(AUTH_LOST));
   if (!res.ok) throw new Error(body?.error?.message ?? `Upload failed (${res.status})`);
+  changed();
   return body as T;
 }
 

@@ -204,3 +204,18 @@ def test_a_short_day_is_carried_forward_and_paid_later(client):
     assert rows[days[0]]["status"] == "deposited" and rows[days[0]]["paid_later_on"] == "2026-03-05" and rows[days[0]]["late"]
     assert rows[days[2]]["left"] == 0 and rows[days[2]]["status"] == "deposited"
     assert slip(days[2], "CF-4", 10, "2026-03-05").status_code == 422      # nothing left to deposit
+
+
+def test_rounding_on_a_slip_that_also_pays_an_older_day(client):
+    jeh = next(s["id"] for s in client.get("/api/stations").json()["stations"] if s["code"] == "YNB")
+    h = {"X-Station": str(jeh)}
+    d = client.post("/api/drivers", json={"code": "Y-1", "name": "Rounding Later"}, headers=h).json()["id"]
+    days = ["2026-02-09", "2026-02-10"]
+    for day in days:
+        client.put("/api/collections", json={"business_date": day, "driver_id": d, "expected_cash": "1000.50", "cash_received": "1000.50"}, headers=h)
+    slip = lambda day, ref, amount: client.post("/api/deposits", headers=h, json={  # noqa: E731
+        "business_date": day, "deposit_date": "2026-02-11", "bank": "Coastal National Bank", "slip_ref": ref, "amount": amount})
+    assert slip(days[0], "RL-1", "900.50").status_code == 201        # 100 short
+    assert slip(days[1], "RL-2", 1105).status_code == 201            # 1,000.50 + the old 100, rounded up 4.50
+    rows = {r["date"]: r for r in client.get("/api/deposits", params={"end": days[1], "count": 2}, headers=h).json()["rows"]}
+    assert rows[days[1]]["left"] == 0 and rows[days[0]]["status"] == "deposited" and rows[days[0]]["rounding"] == 4.5
