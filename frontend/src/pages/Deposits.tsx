@@ -111,7 +111,8 @@ function Slips({ row, onDelete }: { row: DepositDay; onDelete: (s: Slip) => void
 
 export default function Deposits() {
   const [version, setVersion] = useState(0);
-  const { data, error, loading, reload } = useApi<DepositLedger>(`/deposits?count=30&v=${version}`);
+  const [end, setEnd] = useState(todayIso());
+  const { data, error, loading, reload } = useApi<DepositLedger>(`/deposits?count=30&end=${end}&v=${version}`);
   const { station } = useStation();
   const [open, setOpen] = useState<string | null>(null);
   const [depositing, setDepositing] = useState<DepositDay | null>(null);
@@ -121,6 +122,17 @@ export default function Deposits() {
   const changed = () => setVersion((v) => v + 1);
   const t = data?.totals;
   const rows = (data?.rows ?? []).filter((r) => !onlyPending || r.pending !== 0);
+  const all = data?.rows ?? [];
+  const days = (list: DepositDay[]) => {  // "Thu 29 Oct" or "Mon 26 Oct, Tue 27 Oct and 2 more"
+    const d = [...new Set(list.map((r) => r.date))].sort();
+    return d.length ? d.slice(0, 2).map((x) => fmtDay(x)).join(", ") + (d.length > 2 ? ` and ${d.length - 2} more` : "") : "";
+  };
+  const holding = all.filter((r) => r.pending > 0);
+  const dueToday = all.filter((r) => r.status === "due_today");
+  const notDue = all.filter((r) => r.status === "not_due");
+  const late = all.filter((r) => r.status === "overdue" || r.status === "short");
+  const inWindow = [...all].map((r) => r.date).sort();
+  const from = inWindow[0], to = inWindow[inWindow.length - 1];
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -137,20 +149,21 @@ export default function Deposits() {
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Cash on hand</dt>
               <dd className="mt-1 text-[22px] font-semibold"><Money value={t.cash_on_hand} /> <span className="text-sm font-normal text-ink-faint">SAR</span></dd>
-              <dd className="mt-1 text-xs text-ink-faint">Not yet in the bank</dd>
+              <dd className="mt-1 text-xs text-ink-faint">{holding.length ? <>Not yet in the bank: cash of {days(holding)}</> : "Everything is in the bank"}</dd>
             </div>
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Due today</dt>
               <dd className="mt-1 text-[22px] font-semibold"><Money value={t.due_today} tone={t.due_today ? "brass" : undefined} /></dd>
-              <dd className="mt-1 text-xs text-ink-faint">{t.not_due ? <>Plus <span className="num">{fmtMoney(t.not_due)}</span> due on the next working day</> : "Yesterday's cash"}</dd>
+              <dd className="mt-1 text-xs text-ink-faint">{dueToday.length ? <>Cash of {days(dueToday)}</> : "Nothing due today"}
+                {notDue.length > 0 && <> · <span className="num">{fmtMoney(t.not_due)}</span> of {days(notDue)} due {fmtDay(notDue[0].due_on)}</>}</dd>
             </div>
             <div className="p-5">
               <dt className="text-sm text-ink-soft">Overdue or short</dt>
               <dd className={`mt-1 text-[22px] font-semibold ${t.overdue + t.short ? "text-short" : "text-leaf-dark"}`}><Money value={t.overdue + t.short} tone={t.overdue + t.short ? "short" : "leaf"} /></dd>
-              <dd className="mt-1 text-xs text-ink-faint">{t.overdue_days + t.short_days ? [t.overdue_days && `${t.overdue_days} overdue`, t.short_days && `${t.short_days} short`].filter(Boolean).join(", ") + (t.overdue_days + t.short_days === 1 ? " day" : " days") : "Nothing late"}</dd>
+              <dd className={`mt-1 text-xs ${late.length ? "text-short" : "text-ink-faint"}`}>{late.length ? <>Cash of {days(late)}</> : "Nothing late"}</dd>
             </div>
             <div className="p-5">
-              <dt className="text-sm text-ink-soft">Deposited, last 30 working days</dt>
+              <dt className="text-sm text-ink-soft">Deposited{from ? <>, {fmtDay(from)} to {fmtDay(to)}</> : ""}</dt>
               <dd className="mt-1 text-[22px] font-semibold"><Money value={t.deposited} /></dd>
               <dd className="mt-1 text-xs text-ink-faint">{t.late_days ? `${t.late_days} ${t.late_days === 1 ? "day" : "days"} deposited late` : "All on time"}</dd>
             </div>
@@ -158,21 +171,26 @@ export default function Deposits() {
 
           <SlipReader days={data.rows} onRecorded={changed} />
 
-          <Panel flush title="Day by day"
-            action={<label className="flex items-center gap-2 text-sm text-ink-soft">
-              <input type="checkbox" className="h-4 w-4 accent-ledger-700" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />Only days with money pending</label>}>
+          <Panel flush title={from ? `Day by day: ${fmtDay(from)} to ${fmtDay(to, true)}` : "Day by day"}
+            action={<div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-ink-soft">Show up to
+                <input type="date" className="field mt-0 w-auto py-1" value={end} max={todayIso()} onChange={(e) => e.target.value && setEnd(e.target.value)} /></label>
+              <label className="flex items-center gap-2 text-sm text-ink-soft">
+                <input type="checkbox" className="h-4 w-4 accent-ledger-700" checked={onlyPending} onChange={(e) => setOnlyPending(e.target.checked)} />Only days with money pending</label>
+            </div>}>
             {actionError && <div className="px-5 pt-3"><FormError message={actionError} /></div>}
             <div className="relative overflow-x-auto">
-              <table className="w-full min-w-[1120px] text-sm">
+              <table className="w-full min-w-[1220px] text-sm">
                 <thead><tr className="border-b border-paper-line text-left text-xs text-ink-faint">
-                  <th className="px-5 py-2.5 font-medium">Business day</th>
+                  <th className="px-5 py-2.5 font-medium">Cash of</th>
                   <th className="px-3 py-2.5 text-right font-medium">Cash received</th>
                   <th className="px-3 py-2.5 text-right font-medium">Paid out</th>
                   <th className="px-3 py-2.5 text-right font-medium">Day's cash</th>
                   <th className="px-3 py-2.5 text-right font-medium">From before</th>
                   <th className="px-3 py-2.5 text-right font-medium">Total to deposit</th>
                   <th className="px-3 py-2.5 text-right font-medium">Deposited</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Left</th>
+                  <th className="px-3 py-2.5 font-medium">Deposited on</th>
+                  <th className="px-3 py-2.5 text-right font-medium" title="What is still not in the bank after this day, this day's and earlier days'">Left</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-5 py-2.5"><span className="sr-only">Actions</span></th>
                 </tr></thead>
@@ -196,6 +214,10 @@ export default function Deposits() {
                           <td className="px-3 py-3 text-right">{r.brought_forward ? <Money value={r.brought_forward} tone="brass" /> : <span className="text-ink-faint">-</span>}</td>
                           <td className="px-3 py-3 text-right font-medium"><Money value={r.total_due} /></td>
                           <td className="px-3 py-3 text-right"><Money value={r.deposited} /></td>
+                          <td className="px-3 py-3 text-xs text-ink-soft">
+                            {r.slips.length ? [...new Set(r.slips.map((x) => x.deposit_date))].map((x) => fmtDay(x)).join(", ") : <span className="text-ink-faint">Not yet</span>}
+                            {r.paid_later_on && <span className="block text-leaf-dark">short paid {fmtDay(r.paid_later_on)}</span>}
+                          </td>
                           <td className="px-3 py-3 text-right font-semibold">{r.left > 0 ? <Money value={r.left} tone={attention ? "short" : "brass"} />
                             : r.rounding ? <span className="text-xs font-normal text-ink-faint" title="Cash goes to the bank in whole notes">rounded {r.rounding > 0 ? "+" : ""}{fmtMoney(r.rounding)}</span>
                             : <span className="text-ink-faint">0.00</span>}</td>
@@ -203,7 +225,6 @@ export default function Deposits() {
                             <span className="flex flex-wrap items-center gap-1.5">
                               <Badge tone={TONE[r.status]}>{r.status_text}</Badge>
                               {r.late && <Badge tone="short">{r.days_late} {r.days_late === 1 ? "day" : "days"} late</Badge>}
-                              {r.paid_later_on && <span className="text-xs text-ink-faint">short paid {fmtDay(r.paid_later_on)}</span>}
                             </span>
                           </td>
                           <td className="px-5 py-3 text-right">
@@ -214,7 +235,7 @@ export default function Deposits() {
                         </tr>
                         {expanded && (
                           <tr className="border-b border-paper-line bg-paper/50">
-                            <td colSpan={10} className="px-5 py-5"><Slips row={r} onDelete={setDeleting} /></td>
+                            <td colSpan={11} className="px-5 py-5"><Slips row={r} onDelete={setDeleting} /></td>
                           </tr>
                         )}
                       </Fragment>
