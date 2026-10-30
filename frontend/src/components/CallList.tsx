@@ -23,19 +23,19 @@ function File({ ok, label, note }: { ok: boolean | null; label: string; note?: s
 }
 
 /** The supervisor's first look: every station with drivers, the ones to call on top, and which files each cashier sent. */
-export default function CallList({ day }: { day: string }) {
+export default function CallList({ day, only }: { day: string; only?: number }) {
   const { data } = useApi<StationOverview>(`/stations/overview?date=${day}`);
   const { choose } = useStation();
   const go = useNavigate();
   const [raising, setRaising] = useState<FollowDraft | null>(null);
   const draftFor = (s: StationDay, p: StationDay["problems"][number]): FollowDraft => ({
     station_id: s.id, kind: p.kind ?? "other", title: p.text.replace(/\s*\(.*\)$/, ""), amount: p.amount ?? 0, date: p.date ?? day });
-  const rows: StationDay[] = Array.isArray(data?.stations) ? data!.stations : [];
+  const rows: StationDay[] = (Array.isArray(data?.stations) ? data!.stations : []).filter((r) => only == null || r.id === only);
   if (!data) return null;
   const count = (l: string) => rows.filter((r) => r.level === l).length;
 
   return (
-    <Panel flush className="mb-6" title={`Who needs a call on ${fmtDay(day)}`}
+    <Panel flush className="mb-6" title={only == null ? `Who needs a call on ${fmtDay(day)}` : `Does the cashier need a call? ${fmtDay(day)}`}
       action={<span className="flex gap-1.5 text-xs font-semibold">
         {(["call", "check", "ok"] as const).map((l) => <span key={l} className={`rounded-full px-2.5 py-0.5 ${LEVEL[l].chip}`}>{count(l)} {LEVEL[l].text.toLowerCase()}</span>)}
       </span>}>
@@ -74,7 +74,7 @@ export default function CallList({ day }: { day: string }) {
               </span>
               <button onClick={() => { choose(s.id); go("/station"); }}
                 className={`justify-self-start whitespace-nowrap md:justify-self-end ${s.level === "ok" ? "btn-quiet" : "btn-primary"} px-3 py-1.5 text-xs`}>
-                Check station<Icon name="chevronRight" className="h-3.5 w-3.5" />
+                Review<Icon name="chevronRight" className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}

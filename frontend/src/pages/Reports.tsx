@@ -4,6 +4,8 @@ import DayPicker from "../components/DayPicker";
 import { Icon } from "../components/icons";
 import { ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, send, useApi, withStation } from "../lib";
+import { Trend } from "./Dashboard";
+import type { Dashboard as Dash } from "../types";
 import type { ReportPreview } from "../types";
 
 function Downloads({ base }: { base: string }) {
@@ -153,6 +155,13 @@ function MonthEnd() {
   );
 }
 
+/** Cash and card collected per day, the last 30 working days up to the chosen day. */
+function DailyTrend() {
+  const { day, setDay } = useBusinessDay();
+  const data = useApi<Dash>(`/dashboard?date=${day}`).data;
+  return data?.trend ? <div className="xl:col-span-2"><Trend data={data.trend} day={day} onPick={setDay} /></div> : null;
+}
+
 export default function Reports() {
   const { day } = useBusinessDay();
   const today = todayIso();
@@ -171,6 +180,7 @@ export default function Reports() {
     <>
       <PageHeader title="Reports" subtitle="Download the finance report for one business day or for a period. Excel has a sheet per area with working totals; the PDF is ready to print and sign." />
       <div className="grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">
+        <DailyTrend />
         <MorningSummary />
         <MonthEnd />
         <Panel title="Daily finance report">

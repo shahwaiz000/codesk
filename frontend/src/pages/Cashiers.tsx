@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { todayIso } from "../businessDay";
+import MonthBox from "../components/MonthBox";
 import { Icon } from "../components/icons";
 import { Empty, ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
 import { fmtDay, useApi, withStation } from "../lib";
@@ -14,12 +16,13 @@ type Row = {
 const GRADE = {
   good: { text: "Good", cls: "bg-leaf text-white" }, watch: { text: "Watch", cls: "bg-brass-glow text-ledger-950" }, poor: { text: "Needs training", cls: "bg-short text-white" },
 };
-const thisMonth = () => new Date().toISOString().slice(0, 7);
+const thisMonth = () => todayIso().slice(0, 7);
+const lastDay = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); };
 
 /** Each station's cashier, graded on the month: deposits on time, short or late, card sheets that do not match. */
 export default function Cashiers() {
   const [month, setMonth] = useState(thisMonth());
-  const { choose } = useStation();
+  const { choose, station } = useStation();
   const { data, error, loading, reload } = useApi<{ month: string; start: string; end: string; rows: Row[] }>(`/supervisor/scorecard?month=${month}`);
   const rows = Array.isArray(data?.rows) ? data!.rows : [];
   return (
@@ -29,6 +32,7 @@ export default function Cashiers() {
           <input type="month" className="field mt-0 w-auto" value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} /></label>
         <a href={withStation(`/api/supervisor/month-report?month=${month}`)} className="btn-quiet"><Icon name="download" className="h-4 w-4" />Month-end PDF</a>
       </PageHeader>
+      <MonthBox day={month === thisMonth() ? todayIso() : lastDay(month)} name={station ? station.name : "All stations"} />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : rows.length === 0 ? (
         <Empty title="No cashier data for this month" hint="Import a station's files, or add the cashier's name on the Stations page." />
       ) : (

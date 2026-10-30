@@ -31,16 +31,15 @@ function mock() {
   });
 }
 
-test("the dashboard shows the cash flow and open items, not driver differences", async () => {
+test("the overview shows the day's money in four boxes, and no driver differences", async () => {
   mock();
   render(<MemoryRouter><BusinessDayProvider><Dashboard /></BusinessDayProvider></MemoryRouter>);
-  const flow = await screen.findByRole("region", { name: "Cash from driver to bank" });
-  expect(within(flow).getByText("40,721.50")).toBeInTheDocument();
-  expect(within(flow).getByText("721.50")).toBeInTheDocument();
-  expect(within(flow).getByText("Deposit short")).toBeInTheDocument();
-  expect(screen.getByText("+7.6%")).toBeInTheDocument(); // 64,542.50 against 60,000
+  expect(await screen.findByText("Cash collected")).toBeInTheDocument();
+  expect(screen.getByText("40,000.00")).toBeInTheDocument(); // in the bank
+  expect(screen.getByText("37,307.50")).toBeInTheDocument(); // not yet in the bank, all days
+  expect(screen.getByText("Includes late or short deposits")).toBeInTheDocument();
   expect(screen.queryByText("Yousef Al-Amri")).not.toBeInTheDocument(); // driver cash differences are not the supervisor's view
-  expect(screen.getByText("Bank deposit short")).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Cash from driver to bank" })).not.toBeInTheDocument(); // the overview stays simple
 });
 
 test("reports offer both downloads for the chosen day", async () => {
