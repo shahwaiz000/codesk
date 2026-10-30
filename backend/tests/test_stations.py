@@ -167,3 +167,15 @@ def test_month_so_far_for_a_station(client):
     assert m["start"] == latest[:8] + "01" and m["working_days"] >= 1 and m["cash_received"] > 0
     assert m["to_deposit"] == round(m["cash_received"] - m["paid_out"], 2)
     assert m["not_deposited"] >= 0 and m["cash_short"] >= 0
+
+
+def test_the_overview_says_who_to_call(client):
+    client.post("/api/drivers", json={"code": "T-1", "name": "Tabuk Driver"}, headers={"X-Station": str(sid(client, "TUU"))})
+    ov = client.get("/api/stations/overview", params={"date": DAY}).json()
+    by = {s["code"]: s for s in ov["stations"]}
+    dmm = by["DMM"]  # sent the report, but no POS files
+    assert dmm["files"]["report"] and not dmm["files"]["pos_orders"] and dmm["level"] in ("check", "call")
+    assert any("POS orders file is missing" in p["text"] for p in dmm["problems"])
+    assert [s["level"] for s in ov["stations"]] == sorted((s["level"] for s in ov["stations"]), key=["call", "check", "ok"].index)
+    quiet = by.get("TUU")  # a driver but no report on this day
+    assert quiet and not quiet["files"]["report"] and quiet["level"] == "call"

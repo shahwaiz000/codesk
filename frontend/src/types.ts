@@ -112,7 +112,9 @@ export interface StationList { stations: Station[]; unassigned_drivers: number }
 export interface StationDay extends Station {
   handed_over: number; cash_received: number; pos_system: number; pos_terminal: number; pos_difference: number; pos_open: number;
   paid_out: number; to_deposit: number; deposited: number; pending: number; deposit_status: DepositStatus; deposit_status_text: string;
-  cash_on_hand: number; late_days: number; late_amount: number;
+  cash_on_hand: number; late_days: number; late_amount: number; late_dates: string[];
+  files: { report: boolean; pos_orders: boolean; terminal_sheet: boolean; expenses: number; slip: "sent" | "waiting" | "missing" | "none" };
+  problems: { level: "call" | "check"; text: string }[]; level: "call" | "check" | "ok";
 }
 export interface StationOverview {
   date: string; stations: StationDay[]; active_stations: number;

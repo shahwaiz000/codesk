@@ -193,6 +193,39 @@ def adopt(sid: int, db: Session = Depends(get_db), user: str = Depends(current_u
     return {"drivers": len(drivers), "records": records, "station": station_dict(s)}
 
 
+def _check_day(db: Session, sid: int, day: date, f: dict, row: dict | None, late: list[dict]) -> tuple[dict, list[dict], str]:
+    """Which of the day's files the station's cashier has sent, and what the supervisor should ask about.
+    The level is "call" (money is late or the day's report is missing), "check" (something to look at)
+    or "ok"."""
+    q = lambda m: db.query(m).execution_options(all_stations=True).filter(m.station_id == sid)  # noqa: E731
+    report = q(Collection).filter(Collection.business_date == day).count()
+    orders = q(PosOrder).filter(PosOrder.business_date == day).count()
+    machines = (q(TerminalTotal).filter(TerminalTotal.business_date == day).count()  # the machine sheet, or machine totals in the handovers
+                + q(Collection).filter(Collection.business_date == day, Collection.pos_amount > 0).count())
+    expenses = q(Expense).filter(Expense.business_date == day).count()
+    slip_due = bool(row and row["to_deposit"] > 0)
+    slip = "sent" if row and row["deposited"] > 0 else ("waiting" if slip_due and row["status"] in ("not_due", "due_today") else
+                                                       "missing" if slip_due else "none")
+    files = {"report": report > 0, "pos_orders": orders > 0, "terminal_sheet": machines > 0, "expenses": expenses, "slip": slip}
+    problems: list[dict] = []
+    if not report:
+        problems.append({"level": "call", "text": "No collection report for this day"})
+    elif not orders:
+        problems.append({"level": "check", "text": "The system's POS orders file is missing"})
+    elif not machines:
+        problems.append({"level": "check", "text": "The card machine sheet is missing"})
+    if f["pos_open"]:
+        problems.append({"level": "check", "text": f"Card machines differ by {f['pos_difference']:,.2f}, not explained"})
+    if late:
+        amount = sum(r["pending"] for r in late)
+        days = ", ".join(f"{date.fromisoformat(r['date']):%a %d %b}" for r in sorted(late, key=lambda r: r["date"])[:3])
+        problems.append({"level": "call", "text": f"Cash not in the bank: {amount:,.2f} SAR ({days}{'…' if len(late) > 3 else ''})"})
+    if row and row["status"] == "due_today":
+        problems.append({"level": "check", "text": f"Deposit of {row['pending']:,.2f} due today"})
+    level = "call" if any(p["level"] == "call" for p in problems) else "check" if problems else "ok"
+    return files, problems, level
+
+
 @router.get("/overview")
 def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
     """Every station's figures for one day, side by side, plus each one's cash still to deposit."""
@@ -204,6 +237,7 @@ def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
         ledger = deposits.ledger(db, date.today())
         busy = {s for (s,) in db.query(Collection.station_id).filter(Collection.business_date == day).distinct()}
         busy |= {r["station_id"] for r in ledger if r["pending"] > 0}
+        busy |= {s for (s,) in db.query(Driver.station_id).filter(Driver.active.is_(True)).distinct()}  # a station with drivers should send its files
     finally:
         current_station.reset(token)
     counts = dict(db.query(Driver.station_id, func.count(Driver.id)).filter(Driver.active.is_(True)).group_by(Driver.station_id))
@@ -217,11 +251,14 @@ def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
             current_station.reset(token)
         mine = [r for r in ledger if r["station_id"] == st.id]
         late = [r for r in mine if r["status"] in ("overdue", "short")]
+        files, problems, level = _check_day(db, st.id, day, f, rows.get(day.isoformat()), late)
         out.append({**station_dict(st, counts.get(st.id, 0)), "handed_over": f["drivers"],
                     **{k: f[k] for k in ("cash_received", "pos_system", "pos_terminal", "pos_difference", "pos_open",
                                          "paid_out", "to_deposit", "deposited", "pending", "deposit_status", "deposit_status_text")},
                     "cash_on_hand": round(sum(r["pending"] for r in mine if r["pending"] > 0), 2),
-                    "late_days": len(late), "late_amount": round(sum(r["pending"] for r in late), 2)})
+                    "late_days": len(late), "late_amount": round(sum(r["pending"] for r in late), 2),
+                    "late_dates": sorted(r["date"] for r in late), "files": files, "problems": problems, "level": level})
+    out.sort(key=lambda x: ({"call": 0, "check": 1, "ok": 2}[x["level"]], -x["late_amount"], x["name"]))
     add = lambda k: round(sum(x[k] for x in out), 2)  # noqa: E731
     return {"date": day.isoformat(), "stations": out, "active_stations": db.query(Station).filter(Station.active.is_(True)).count(),
             "totals": {k: add(k) for k in ("cash_received", "pos_system", "pos_terminal", "paid_out", "to_deposit", "deposited",

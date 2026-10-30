@@ -9,6 +9,7 @@ import { fmtDay, fmtMoney, useApi } from "../lib";
 import type { Dashboard as Dash } from "../types";
 import StationBoard from "../components/StationBoard";
 import MonthBox from "../components/MonthBox";
+import CallList from "../components/CallList";
 import { useStation } from "../stations";
 
 /* Chart colors, checked for color-blind separation and contrast on white. */
@@ -82,9 +83,10 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader title={station ? `${station.name} station` : "Dashboard"}
-        subtitle={station ? `The business day at ${station.name} at a glance, and everything there that still needs you.` : "The business day across every station at a glance, and everything across all days that still needs you."} />
+      <PageHeader title={station ? `${station.name} station` : "Overview"}
+        subtitle={station ? `The business day at ${station.name} at a glance, and everything there that still needs you.` : "Every station's day at a glance: which cashier to call, which files are missing, and where the money is."} />
       <DayPicker />
+      {!station && <CallList day={day} />}
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && f && (
         <>
           <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>div]:border-paper-line max-lg:[&>div:nth-child(-n+2)]:border-b max-lg:[&>div:nth-child(odd)]:border-r lg:[&>div:not(:last-child)]:border-r">
