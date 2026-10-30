@@ -24,7 +24,7 @@ export default function Cashiers() {
   const rows = Array.isArray(data?.rows) ? data!.rows : [];
   return (
     <>
-      <PageHeader title="Cashiers" subtitle="Each station's cashier, graded on the month. The score is the share of days whose cash reached the bank in full and on time.">
+      <PageHeader title="Cashier performance" subtitle="Each station's cashier, graded on the month. The score is the share of days whose cash reached the bank in full and on time.">
         <label className="flex items-center gap-2 text-sm text-ink-soft">Month
           <input type="month" className="field mt-0 w-auto" value={month} max={thisMonth()} onChange={(e) => e.target.value && setMonth(e.target.value)} /></label>
         <a href={withStation(`/api/supervisor/month-report?month=${month}`)} className="btn-quiet"><Icon name="download" className="h-4 w-4" />Month-end PDF</a>

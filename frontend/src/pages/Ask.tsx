@@ -62,7 +62,7 @@ export default function Ask() {
 
   return (
     <>
-      <PageHeader title="Ask CODesk" subtitle="Ask about your cash, POS, expenses and deposits in plain English. The AI looks the figures up with CODesk's own calculations and answers from them only." />
+      <PageHeader title="AI assistant" subtitle="Ask about your cash, POS, expenses and deposits in plain English. The AI looks the figures up with CODesk's own calculations and answers from them only." />
 
       {ai && (
         <div className={`mb-6 flex flex-wrap items-center gap-2 rounded-panel px-4 py-3 text-sm ${ai.ready ? "bg-leaf-soft text-leaf-dark" : "bg-brass-soft text-brass-dark"}`}>

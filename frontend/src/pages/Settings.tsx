@@ -172,7 +172,7 @@ function AiEngine() {
 
   return (
     <form onSubmit={save} className="space-y-4">
-      <p className="text-sm text-ink-soft">Reads deposit slips and answers questions on the Ask CODesk page.</p>
+      <p className="text-sm text-ink-soft">Reads deposit slips and answers questions on the AI assistant page.</p>
       {[
         { v: "local" as const, t: "Local AI on this computer (Ollama)", d: "Private: nothing leaves this computer. Needs about 3 GB of free memory." },
         { v: "gemini" as const, t: "Google Gemini, free (cloud), demo data only", d: "Works on any laptop, in seconds. Google may use what is sent on its free tier, so CODesk only allows it in demo mode, with the fictional data." },

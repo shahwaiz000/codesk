@@ -142,7 +142,7 @@ export default function Deposits() {
 
   return (
     <>
-      <PageHeader title="Deposit history" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. A day's cash is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash. Anything not deposited is carried to the next day, like a bank statement.`} />
+      <PageHeader title="Bank deposits" subtitle={`${station ? `${station.name}: ` : "Each station deposits its own cash. "}Each day's cash goes to the bank on the next working day. A day's cash is the cash received from drivers, minus expenses and advances paid out, plus advances returned in cash. Anything not deposited is carried to the next day, like a bank statement.`} />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && t && (
         <>
           <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>div]:border-paper-line max-lg:[&>div:nth-child(-n+2)]:border-b max-lg:[&>div:nth-child(odd)]:border-r lg:[&>div:not(:last-child)]:border-r">

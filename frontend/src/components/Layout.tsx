@@ -7,16 +7,18 @@ import { Icon, IconName, Mark } from "./icons";
 type NavItem = { to: string; label: string; icon: IconName };
 /* Pages are added here as each stage is finished, so the menu never points at an empty page. */
 export const NAV: { title: string; items: NavItem[] }[] = [
-  { title: "Daily desk", items: [
+  { title: "Daily work", items: [
     { to: "/", label: "Overview", icon: "dashboard" },
-    { to: "/station", label: "Station day", icon: "warehouse" },
+    { to: "/station", label: "Daily review", icon: "warehouse" },
     { to: "/follow-ups", label: "Follow-ups", icon: "alert" },
-    { to: "/cashiers", label: "Cashiers", icon: "drivers" },
-    { to: "/deposits", label: "Deposit history", icon: "bank" },
   ] },
-  { title: "Records", items: [
+  { title: "Analysis", items: [
+    { to: "/deposits", label: "Bank deposits", icon: "bank" },
+    { to: "/cashiers", label: "Cashier performance", icon: "drivers" },
     { to: "/reports", label: "Reports", icon: "report" },
-    { to: "/ask", label: "Ask CODesk", icon: "spark" },
+    { to: "/ask", label: "AI assistant", icon: "spark" },
+  ] },
+  { title: "Setup", items: [
     { to: "/stations", label: "Stations", icon: "pin" },
   ] },
 ];

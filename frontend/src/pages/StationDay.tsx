@@ -30,7 +30,7 @@ function ChooseStation() {
   const staffed = stations.filter((s) => s.active);
   return (
     <>
-      <PageHeader title="Station day" subtitle="Choose the station to check. You can also choose it at the top of the menu." />
+      <PageHeader title="Daily review" subtitle="Choose the station to check. You can also choose it at the top of the menu." />
       {staffed.length === 0 ? <p className="text-sm text-ink-soft">No station yet. Add one on the Stations page.</p> : (
         <div className="space-y-5">
           {byRegion(staffed).map(([region, list]) => (
@@ -86,7 +86,7 @@ export default function StationDay({ tab: fixedTab }: { tab?: string }) {
 
   return (
     <>
-      <PageHeader title={`${station.name} station`} subtitle={`${station.code}${station.region ? ` · ${station.region}` : ""}${station.cashier_name ? ` · cashier ${station.cashier_name}` : ""} · everything the cashier did on one day.`} />
+      <PageHeader title={`Daily review: ${station.name}`} subtitle={`${station.code}${station.region ? ` · ${station.region}` : ""}${station.cashier_name ? ` · cashier ${station.cashier_name}` : ""} · everything the cashier did on one day.`} />
       <DayPicker />
       {error ? <ErrorBox message={error} retry={reload} /> : (
         <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel sm:grid-cols-3 lg:grid-cols-6 [&>div]:border-paper-line [&>div]:border-b lg:[&>div]:border-b-0 [&>div:not(:last-child)]:border-r">
