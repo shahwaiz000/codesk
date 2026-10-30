@@ -48,6 +48,8 @@ def test_a_slip_is_read_checked_and_recorded(client, monkeypatch, day_with_cash)
                                                            "bank": r["bank"], "slip_ref": r["slip_number"], "amount": r["total"]}).json()
     assert row["status"] == "deposited" and row["rounding"] == 1.6
     assert not any(s["id"] == r["id"] for s in client.get("/api/slips").json())  # no longer waiting
+    # a deposit recorded from a read slip can still be deleted
+    assert client.delete(f"/api/deposits/{row['slips'][-1]['id']}").json() == {"deleted": True}
 
 
 def test_misread_or_wrong_slips_are_flagged(client, monkeypatch, day_with_cash):

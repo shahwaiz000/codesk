@@ -243,6 +243,10 @@ def delete_deposit(did: int, db: Session = Depends(get_db), user: str = Depends(
         raise HTTPException(404, "Deposit not found")
     audit.record(db, user, "deleted", "deposit", d.id,
                  f"Deleted slip {d.slip_ref}: {to_sar(d.amount):,.2f} for {d.business_date.isoformat()} at {d.bank}")
+    from .models import SlipScan
+    for scan in db.query(SlipScan).filter(SlipScan.deposit_id == d.id):  # a slip read by the AI goes back to put aside
+        scan.deposit_id, scan.status = None, "dismissed"
+    db.flush()
     db.delete(d)
     db.commit()
     return {"deleted": True}
