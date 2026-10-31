@@ -403,3 +403,114 @@ def month_report(month: str | None = None, db: Session = Depends(get_db), user: 
     db.commit()
     name = f"codesk-month-{first:%Y-%m}" + (f"-{st.code}" if st else "")
     return Response(buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+
+
+# ---------------------------------------------------------------- the daily supervisor report
+
+def _local(stamp: str) -> str:
+    """A saved UTC time ("…Z") as this computer's local time, e.g. 16:10."""
+    return datetime.fromisoformat(stamp.rstrip("Z")).replace(tzinfo=timezone.utc).astimezone().strftime("%H:%M")
+
+
+@router.get("/day-report")
+def day_report(date_: str = Query(alias="date"), db: Session = Depends(get_db), user: str = Depends(current_user)):
+    """One page for the manager once the day is checked: every station's money and sign-off, the problems
+    found, and the follow-ups still open."""
+    import io
+    from xml.sax.saxutils import escape
+
+    from fastapi.responses import Response
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    from . import stations
+    from .config import settings
+
+    day = parse_day(date_)
+    sid = current_station.get()
+    ov = stations.overview(date_=day.isoformat(), db=db)
+    rows = [r for r in ov["stations"] if sid is None or r["id"] == sid]
+    names = {s.id: s for s in db.query(Station)}
+    opened = (db.query(FollowUp).filter(FollowUp.status == "open", *([FollowUp.station_id == sid] if sid else []))
+              .order_by(FollowUp.created_at).all())
+    st = names.get(sid) if sid else None
+    title = f"Daily supervisor report: {st.name if st else 'all stations'}, {day:%a %d %b %Y}"
+
+    green, ink, soft, line, red, gold = (colors.HexColor(c) for c in ("#0f2e22", "#16211c", "#7c8781", "#e1e6e0", "#b8402e", "#86590c"))
+    h1 = ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=16, leading=20, textColor=green, spaceAfter=3)
+    h2 = ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=10.5, textColor=ink, spaceBefore=10, spaceAfter=4)
+    small = ParagraphStyle("small", fontName="Helvetica", fontSize=8, textColor=soft)
+    cell = ParagraphStyle("cell", fontName="Helvetica", fontSize=7.5, leading=9, textColor=ink)
+    body = ParagraphStyle("body", fontName="Helvetica", fontSize=8.5, leading=11, textColor=ink)
+    m = lambda v: f"{v:,.2f}"  # noqa: E731
+
+    def table(head, data, widths, right=(), total=None):
+        data = data or [["Nothing recorded"] + [""] * (len(head) - 1)]
+        t = Table([head] + data + ([total] if total else []), colWidths=[w * mm for w in widths], repeatRows=1)
+        style = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.5), ("FONT", (0, 1), (-1, -1), "Helvetica", 7.5),
+                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("BACKGROUND", (0, 0), (-1, 0), green),
+                 ("LINEBELOW", (0, 1), (-1, -1), 0.4, line), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                 ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]
+        style += [("ALIGN", (c, 0), (c, -1), "RIGHT") for c in right]
+        if total:
+            style += [("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 7.5), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f3f5f2"))]
+        t.setStyle(TableStyle(style))
+        return t
+
+    checked = sum(1 for r in rows if r.get("check"))
+    calls = sum(1 for r in rows if r["level"] == "call")
+    left_total = sum(max(r.get("left", 0), 0) for r in rows)
+    story = [Paragraph(escape(title), h1),
+             Paragraph(f"Prepared by {escape(user)} on {datetime.now():%d %b %Y %H:%M}  |  all amounts in SAR", small), Spacer(1, 6),
+             Paragraph(f"<b>{checked} of {len(rows)} stations checked.</b> {calls} {'station needs' if calls == 1 else 'stations need'} a call. "
+                       f"Cash still not in the bank, all days: <b>{m(left_total)}</b>.", body)]
+
+    story.append(Paragraph("Stations", h2))
+    data = []
+    for r in rows:
+        c = r.get("check")
+        data.append([Paragraph(escape(r["name"]), cell), Paragraph(escape(names[r["id"]].cashier_name or "-"), cell),
+                     m(r["cash_received"]), m(r["pos_terminal"] or r["pos_system"]), m(r["paid_out"]),
+                     m(r.get("total_due", r["to_deposit"])), m(r["deposited"]), m(max(r.get("left", r["pending"]), 0)),
+                     {"call": "Call", "check": "Check", "ok": "Fine"}[r["level"]],
+                     Paragraph(escape(f"{c['checked_by']} {_local(c['checked_at'])}" if c else "Not checked"), cell)])
+    add = lambda k: sum(r[k] for r in rows)  # noqa: E731
+    total = ["Total", "", m(add("cash_received")), m(sum(r["pos_terminal"] or r["pos_system"] for r in rows)), m(add("paid_out")),
+             m(sum(r.get("total_due", r["to_deposit"]) for r in rows)), m(add("deposited")), m(left_total), "", f"{checked} of {len(rows)}"]
+    t = table(["Station", "Cashier", "Cash", "Card", "Expenses", "To deposit", "Deposited", "Left", "Status", "Checked by"], data,
+              [36, 36, 25, 25, 20, 26, 25, 25, 15, 34], right=range(2, 8), total=total)
+    for i, r in enumerate(rows, 1):
+        t.setStyle(TableStyle([("TEXTCOLOR", (8, i), (8, i), red if r["level"] == "call" else gold if r["level"] == "check" else green),
+                               ("FONT", (8, i), (8, i), "Helvetica-Bold", 7.5)]))
+    story.append(t)
+
+    story.append(Paragraph("Problems found", h2))
+    problems = [[Paragraph(escape(r["name"]), cell), Paragraph(escape(p["text"]), cell)] for r in rows for p in r["problems"]]
+    story.append(table(["Station", "Problem"], problems, [40, 227]))
+
+    story.append(Paragraph("Follow-ups still open", h2))
+    story.append(table(["Raised", "Station", "About", "Amount", "Open for", "Latest note"],
+                       [[f"{f.created_at:%d %b}", Paragraph(escape(f.station.name), cell), Paragraph(escape(f.title), cell), m(to_sar(f.amount)),
+                         f"{(_now().date() - f.created_at.date()).days} days", Paragraph(escape(f.notes[-1].text if f.notes else "-"), cell)]
+                        for f in opened], [16, 34, 70, 22, 18, 107], right=(3,)))
+
+    story += [Spacer(1, 18), Paragraph("Checked by: ______________________________   Signature: ____________________   Date: ____________", body)]
+
+    def footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(soft)
+        canvas.drawString(15 * mm, 9 * mm, f"CODesk  |  {title}" + ("  |  fictional demo data" if settings.seed_demo_data else ""))
+        canvas.drawRightString(landscape(A4)[0] - 15 * mm, 9 * mm, f"Page {doc.page}")
+        canvas.restoreState()
+
+    buf = io.BytesIO()
+    SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=15 * mm, rightMargin=15 * mm, topMargin=12 * mm, bottomMargin=15 * mm,
+                      title=title, author=user).build(story, onFirstPage=footer, onLaterPages=footer)
+    audit.record(db, user, "exported", "report", None, title)
+    db.commit()
+    name = f"codesk-daily-{day.isoformat()}" + (f"-{st.code}" if st else "")
+    return Response(buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})

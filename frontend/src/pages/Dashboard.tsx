@@ -3,7 +3,8 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { useBusinessDay } from "../businessDay";
 import DayPicker from "../components/DayPicker";
 import { ErrorBox, Loading, Money, PageHeader, Panel } from "../components/ui";
-import { fmtDay, fmtMoney, useApi } from "../lib";
+import { fmtDay, fmtMoney, useApi, withStation } from "../lib";
+import { Icon } from "../components/icons";
 import type { Dashboard as Dash } from "../types";
 import StationBoard from "../components/StationBoard";
 import CallList from "../components/CallList";
@@ -81,7 +82,9 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Overview"
-        subtitle={station ? `${station.name}: the day's money, and whether the cashier needs a call.` : "Every station's day: how much money came in, and which cashier needs a call."} />
+        subtitle={station ? `${station.name}: the day's money, and whether the cashier needs a call.` : "Every station's day: how much money came in, and which cashier needs a call."}>
+        <a href={withStation(`/api/supervisor/day-report?date=${day}`)} className="btn-primary"><Icon name="download" className="h-4 w-4" />Daily report (PDF)</a>
+      </PageHeader>
       <DayPicker />
       {loading && !data ? <Loading /> : error ? <ErrorBox message={error} retry={reload} /> : data && f && (
         <dl className="mb-6 grid grid-cols-2 overflow-hidden rounded-panel bg-white shadow-panel lg:grid-cols-4 [&>*]:border-paper-line max-lg:[&>*:nth-child(-n+2)]:border-b max-lg:[&>*:nth-child(odd)]:border-r lg:[&>*:not(:last-child)]:border-r">

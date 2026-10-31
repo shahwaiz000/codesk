@@ -277,7 +277,8 @@ def overview(date_: str = Query(alias="date"), db: Session = Depends(get_db)):
         files, problems, level = _check_day(db, st.id, day, f, rows.get(day.isoformat()), late)
         out.append({**station_dict(st, counts.get(st.id, 0)), "handed_over": f["drivers"],
                     **{k: f[k] for k in ("cash_received", "pos_system", "pos_terminal", "pos_difference", "pos_open",
-                                         "paid_out", "to_deposit", "deposited", "pending", "deposit_status", "deposit_status_text")},
+                                         "paid_out", "to_deposit", "deposited", "pending", "deposit_status", "deposit_status_text",
+                                         "brought_forward", "total_due", "left")},
                     "cash_on_hand": round(sum(r["pending"] for r in mine if r["pending"] > 0), 2),
                     "late_days": len(late), "late_amount": round(sum(r["pending"] for r in late), 2),
                     "late_dates": sorted(r["date"] for r in late), "files": files, "problems": problems, "level": level,

@@ -140,6 +140,18 @@ function MorningSummary() {
   );
 }
 
+/** The one-page report the supervisor sends the manager once every station's day is checked. */
+function DailySupervisor() {
+  const { day } = useBusinessDay();
+  return (
+    <Panel title="Daily supervisor report">
+      <p className="-mt-2 mb-4 text-sm text-ink-soft">For your manager, after you have checked every station: each station's money and who checked it, the problems found, and the follow-ups still open. One page, ready to attach to an e-mail.</p>
+      <DayPicker />
+      <a href={withStation(`/api/supervisor/day-report?date=${day}`)} className="btn-primary -mt-2"><Icon name="download" className="h-4 w-4" />Daily report (PDF)</a>
+    </Panel>
+  );
+}
+
 /** The month-end report for the station being looked at, or for all stations. */
 function MonthEnd() {
   const thisMonth = todayIso().slice(0, 7);
@@ -181,6 +193,7 @@ export default function Reports() {
       <PageHeader title="Reports" subtitle="Download the finance report for one business day or for a period. Excel has a sheet per area with working totals; the PDF is ready to print and sign." />
       <div className="grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">
         <DailyTrend />
+        <DailySupervisor />
         <MorningSummary />
         <MonthEnd />
         <Panel title="Daily finance report">

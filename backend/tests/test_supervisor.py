@@ -67,3 +67,16 @@ def test_the_month_end_report_is_a_pdf(client):
     import fitz
     text = "".join(p.get_text() for p in fitz.open(stream=one.content, filetype="pdf"))
     assert "Month-end report: Jeddah" in text and "Day by day" in text and "Ahmed Saleh" in text
+
+
+def test_the_daily_supervisor_report_is_a_pdf(client):
+    import fitz
+    s = jed(client)
+    client.post("/api/supervisor/check", json={"date": END.isoformat(), "station_id": s["id"], "note": "ok"})
+    r = client.get("/api/supervisor/day-report", params={"date": END.isoformat()})
+    assert r.status_code == 200 and r.content[:4] == b"%PDF"
+    text = "".join(p.get_text() for p in fitz.open(stream=r.content, filetype="pdf"))
+    assert "Daily supervisor report: all stations" in text and "Jeddah" in text and "Ahmed Saleh" in text
+    assert "stations checked" in text and "Follow-ups still open" in text and "Signature" in text
+    one = client.get("/api/supervisor/day-report", params={"date": END.isoformat(), "station": s["id"]})
+    assert "-JED.pdf" in one.headers["content-disposition"]
