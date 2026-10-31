@@ -36,7 +36,10 @@ export default function CallList({ day, only }: { day: string; only?: number }) 
 
   return (
     <Panel flush className="mb-6" title={only == null ? `Who needs a call on ${fmtDay(day)}` : `Does the cashier need a call? ${fmtDay(day)}`}
-      action={<span className="flex gap-1.5 text-xs font-semibold">
+      action={<span className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+        {rows.length > 0 && (() => { const done = rows.filter((r) => r.check).length; return (
+          <span className={`mr-2 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 ${done === rows.length ? "bg-leaf text-white" : "bg-ledger-800 text-white"}`}>
+            <Icon name="check" className="h-3.5 w-3.5" />{done} of {rows.length} checked</span>); })()}
         {(["call", "check", "ok"] as const).map((l) => <span key={l} className={`rounded-full px-2.5 py-0.5 ${LEVEL[l].chip}`}>{count(l)} {LEVEL[l].text.toLowerCase()}</span>)}
       </span>}>
       {rows.length === 0 ? <p className="px-5 py-6 text-sm text-ink-soft">No station has drivers yet. Import your drivers with their station first.</p> : (
@@ -51,7 +54,7 @@ export default function CallList({ day, only }: { day: string; only?: number }) 
                 </span>
                 {s.check
                   ? <span className="mt-1 inline-flex items-center gap-1 text-xs text-leaf-dark"><Icon name="check" className="h-3 w-3" />Checked by {s.check.checked_by}</span>
-                  : <span className="mt-1 block text-xs text-ink-faint">Not checked yet</span>}
+                  : <span className="mt-1 block text-xs font-medium text-brass-dark">Not checked yet</span>}
                 <span className="mt-0.5 block text-xs text-ink-faint">{s.code} · {s.handed_over}/{s.drivers} drivers · cash <Money value={s.cash_received} /></span>
               </span>
               <span className="min-w-0 space-y-1.5">
